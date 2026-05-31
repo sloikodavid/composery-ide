@@ -1,0 +1,37 @@
+// The root program: the shared package, the repo-wide tests, and the scripts
+// they drive. `packages/web` and the IDE fork check themselves - see their own
+// tsconfig.json and `check:types` in each package.json.
+//
+// Only options TypeScript does not already apply are listed. TypeScript 6 turns
+// `strict` on by default and derives `moduleResolution` from `module`, so
+// spelling either one out here would say nothing.
+{
+	"compilerOptions": {
+		"allowImportingTsExtensions": true,
+		// Node runs packages/shared/index.ts and the .ts test helpers itself, by
+		// stripping their types rather than compiling them. These two hold the
+		// checker to that: no syntax that stripping cannot erase, and no relative
+		// specifier Node would fail to resolve as written.
+		"erasableSyntaxOnly": true,
+		"rewriteRelativeImportExtensions": true,
+		// Stricter than `strict`, which stops short of both.
+		"exactOptionalPropertyTypes": true,
+		"noUncheckedIndexedAccess": true,
+		"module": "NodeNext",
+		"noEmit": true,
+		"target": "ESNext",
+		// TypeScript 6 loads no @types package unless it is named here, so this is
+		// the whole type surface these files get.
+		"types": ["node"],
+		"verbatimModuleSyntax": true
+	},
+	// A script's `.d.mts` arrives with the `.mjs` its test imports, so listing one
+	// here would only duplicate that import.
+	"include": [
+		"packages/shared/index.ts",
+		"packages/shared/tests/**/*.ts",
+		"tests/**/*.ts",
+		"packages/ide/tests/**/*.ts",
+		"vitest*.ts"
+	]
+}
