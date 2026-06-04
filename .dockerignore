@@ -1,0 +1,11 @@
+**
+!Dockerfile
+!rootfs/**
+!packages/ide/**
+!packages/cli/**
+!packages/shared/*.ts
+packages/ide/upstream
+packages/ide/build
+packages/ide/tmp
+packages/cli/target
+**/node_modules

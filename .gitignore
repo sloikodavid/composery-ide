@@ -1,0 +1,23 @@
+tmp/
+node_modules/
+.cache/
+.env
+.env.*
+*.log
+dist/
+target/
+packages/cli/target/
+.pnpm-store/
+.DS_Store
+Thumbs.db
+.playwright-cli
+
+# Coverage output (vitest --coverage; the ratchet lives in vitest.config.ts)
+coverage/
+
+# cargo-mutants output (pnpm check:mutants); scratch, like tmp/ and target/.
+# Both names: a second run rotates the first one's output to mutants.out.old,
+# which then reaches check:whitelist as an untracked directory of Rust fixtures.
+mutants.out/
+mutants.out.old/
+

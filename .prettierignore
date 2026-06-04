@@ -1,0 +1,39 @@
+# Generated or vendored output: produced by a tool, or copied from one, so this
+# repo's formatter has no claim on it. A generator that writes through
+# scripts/write-formatted.mjs is deliberately absent - its output already matches
+# `prettier --check`, and excluding it would hide a generator that stopped doing
+# so. whitelist.jsonc is here because scripts/whitelist.mjs writes it directly.
+#
+# Patterns are gitignore syntax: a name with no internal slash matches at every
+# depth, so `build/` covers packages/ide/build/ and `next-env.d.ts` covers the
+# copy Next writes into packages/web. node_modules is not listed because Prettier
+# skips it without being asked.
+coverage/
+tmp/
+dist/
+build/
+.cache/
+.next/
+.source/
+pnpm-lock.yaml
+whitelist.jsonc
+**/convex/_generated/
+next-env.d.ts
+
+# Ours, but not written for this repo's formatter. Every file here is copied
+# into someone else's tree and has to read like its neighbours, so formatting
+# them to this repo's style would rewrite them into a style unlike every file
+# around them.
+#
+# overlay/lib/vscode/ lands inside VS Code's tree, whose wrapping prettier does
+# not reproduce, so it stays unformatted; the compiler covers what it can - see the overlay pass in
+# packages/ide/scripts/types.mjs.
+#
+# overlay/src/ is deliberately not listed. It lands in code-server's src/, and
+# that style is a prettier config we can simply adopt: prettier.config.mjs reads
+# upstream's own .prettierrc.yaml and overrides `packages/ide/overlay/src/**`
+# with it, so `check:format` enforces that style rather than an exclusion
+# asserting a rule nothing checked. Half that tree had drifted to tabs and
+# semicolons while this comment claimed otherwise.
+packages/ide/overlay/lib/vscode/
+packages/ide/upstream/
