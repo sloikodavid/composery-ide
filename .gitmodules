@@ -1,0 +1,5 @@
+[submodule "packages/ide/upstream"]
+	path = packages/ide/upstream
+	url = https://github.com/coder/code-server.git
+	branch = v4.127.0
+	ignore = dirty

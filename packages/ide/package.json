@@ -1,0 +1,12 @@
+{
+	"name": "ide",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"check": "pnpm check:rebrand && pnpm check:types",
+		"check:rebrand": "node scripts/rebrand.mjs --check",
+		"check:types": "node scripts/types.mjs",
+		"build": "bash scripts/build.sh"
+	}
+}
