@@ -1,0 +1,90 @@
+The server's environment configuration surface.
+
+Every documented flag needs a variable behind it, and a variable set wrong must
+not look like one that is unset.
+
+- --disable-file-uploads gets CS_DISABLE_FILE_UPLOADS. Upstream left the flag
+  CLI-only and Composery passes no CLI flags, so the documented variable had
+  nothing reading it at all: uploads stayed on while the operator believed they
+  were blocked. The help text names it for the same reason every sibling flag
+  does.
+- Every one of these switches is read through envFlag(), the overlay module that
+  is now the only definition of "set to 1 or true" in the product. Upstream's
+  inline regex answered differently from the API's own reading of the same
+  sentence, so CS_DISABLE_PROXY=TRUE left the proxy up while
+  COMPOSERY_DISABLE_API=TRUE took the API down.
+- An unparseable idle timeout throws instead of being logged and ignored, so a
+  typo cannot silently disable the timeout.
+- The app name is ours rather than an environment default.
+
+The variables are written in upstream's spelling on purpose: rebrand.mjs owns
+every rename, so CS_DISABLE_FILE_UPLOADS becomes COMPOSERY_DISABLE_FILE_UPLOADS
+on the assembled tree and there is exactly one table to change. No patch in this
+stack renames an upstream variable. Variables Composery introduces outright
+(COMPOSERY_DISABLE_AUTH, COMPOSERY_CLOUD_BOX_ID) have no upstream spelling to
+rename, so they are written as themselves where they are read.
+
+--- a/src/node/cli.ts
++++ b/src/node/cli.ts
+@@ -2,6 +2,7 @@ import { field, Level, logger } from "@coder/logger"
+ import { promises as fs } from "fs"
+ import { load } from "js-yaml"
+ import * as path from "path"
++import { envFlag } from "./envFlag"
+ import { generateCertificate, generatePassword, paths, splitOnFirstEquals } from "./util"
+ import { EditorSessionManagerClient } from "./vscodeSocket"
+ 
+@@ -187,7 +188,8 @@
+   },
+   "disable-file-uploads": {
+     type: "boolean",
+-    description: "Disable file uploads.",
++    description:
++      "Disable file uploads. This can also be set with CS_DISABLE_FILE_UPLOADS set to 'true' or '1'.",
+   },
+   "disable-workspace-trust": {
+     type: "boolean",
+@@ -613,18 +615,22 @@
+     args.password = process.env.PASSWORD
+   }
+ 
+-  if (process.env.CS_DISABLE_FILE_DOWNLOADS?.match(/^(1|true)$/)) {
++  if (envFlag("CS_DISABLE_FILE_DOWNLOADS")) {
+     args["disable-file-downloads"] = true
+   }
+ 
+-  if (process.env.CS_DISABLE_GETTING_STARTED_OVERRIDE?.match(/^(1|true)$/)) {
++  if (envFlag("CS_DISABLE_FILE_UPLOADS")) {
++    args["disable-file-uploads"] = true
++  }
++
++  if (envFlag("CS_DISABLE_GETTING_STARTED_OVERRIDE")) {
+     args["disable-getting-started-override"] = true
+   }
+ 
+-  if (process.env.CS_DISABLE_PROXY?.match(/^(1|true)$/)) {
++  if (envFlag("CS_DISABLE_PROXY")) {
+     args["disable-proxy"] = true
+   }
+ 
+   const usingEnvHashedPassword = !!process.env.HASHED_PASSWORD
+   if (process.env.HASHED_PASSWORD) {
+     args["hashed-password"] = process.env.HASHED_PASSWORD
+@@ -645,7 +651,7 @@
+ 
+   if (process.env.CODE_SERVER_IDLE_TIMEOUT_SECONDS) {
+     if (isNaN(Number(process.env.CODE_SERVER_IDLE_TIMEOUT_SECONDS))) {
+-      logger.info("CODE_SERVER_IDLE_TIMEOUT_SECONDS must be a number")
++      throw new Error("CODE_SERVER_IDLE_TIMEOUT_SECONDS must be a number")
+     }
+     if (Number(process.env.CODE_SERVER_IDLE_TIMEOUT_SECONDS) <= 60) {
+       throw new Error("--idle-timeout-seconds must be greater than 60 seconds.")
+@@ -677,7 +682,7 @@
+   }
+   args["proxy-domain"] = finalProxies
+ 
+-  args["app-name"] ??= process.env.CODE_SERVER_APP_NAME || "code-server"
++  args["app-name"] ??= "Composery"
+ 
+   args._ = getResolvedPathsFromArgs(args)
+ 

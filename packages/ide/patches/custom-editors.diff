@@ -1,0 +1,42 @@
+Register custom editors while the workbench starts, not when the browser next
+goes idle.
+
+`ICustomEditorService` builds the contributed-editor list and hands it to the
+editor resolver in its constructor: it is the only thing that teaches the
+workbench that a .png opens as Image Preview, a .ipynb as a notebook, and so on
+for every extension-contributed editor. Upstream registers it Delayed, which
+means "instantiate when a consumer *uses* it" - a consumer that only holds the
+reference gets a proxy backed by a requestIdleCallback. The one startup consumer
+(ComplexCustomWorkingCopyEditorHandler, whose ICustomEditorService argument
+carries a "DO NOT REMOVE (needed on startup to register overrides properly)"
+comment) never touches it, so nothing but that idle callback can build it.
+
+requestIdleCallback here is passed no timeout, and a hidden document never gets
+one. Start a window in a background tab - a phone that locks or switches apps
+while the workbench loads, an installed app restored into the background - and
+no custom editor is registered for the entire life of that window: images open
+as "The file is not displayed in the text editor because it is either binary or
+uses an unsupported text encoding". Reproduced on Chrome 148 with a hidden tab:
+a workspace .png still resolved to the plain text editor 20s after startup, and
+"Reopen Editor With..." offered only Text Editor.
+
+It looks intermittent because the list is also cached in browser storage. The
+first window that does happen to be visible stores it, and every later window
+registers early from that cache - so the capability appears to switch on for
+good once something has stored it.
+
+Eager means "instantiate as soon as a consumer depends on it", which is the
+startup contribution above, at a fixed point in the boot instead of whenever
+the browser feels idle.
+
+--- a/lib/vscode/src/vs/workbench/contrib/customEditor/browser/customEditor.contribution.ts
++++ b/lib/vscode/src/vs/workbench/contrib/customEditor/browser/customEditor.contribution.ts
+@@ -16,7 +16,7 @@
+ import { CustomEditorDiffInput, CustomEditorSideBySideDiffInput } from './customEditorDiffInput.js';
+ import { CustomEditorService } from './customEditors.js';
+ 
+-registerSingleton(ICustomEditorService, CustomEditorService, InstantiationType.Delayed);
++registerSingleton(ICustomEditorService, CustomEditorService, InstantiationType.Eager);
+ 
+ Registry.as<IEditorPaneRegistry>(EditorExtensions.EditorPane)
+ 	.registerEditorPane(

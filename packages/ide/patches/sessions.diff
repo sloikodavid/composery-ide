@@ -1,0 +1,179 @@
+Issue signed, expiring Composery sessions.
+
+authenticated() stops comparing a password hash carried in the cookie and
+validates an opaque signed token instead (overlay src/node/session.ts), so a
+session expires on its own and every session dies when the password changes.
+
+The cookie's scope stops coming from the page. Upstream derived Path and
+Domain from a base/href the client sends with the request, which put two
+things wrong at once: the workbench mount is the wrong scope, because this
+same server answers /proxy and /absproxy above it and the browser never sent
+the cookie there; and a caller that picks the Domain can widen its own session
+to a parent domain. One fixed origin-root scope fixes both, makes setting and
+clearing symmetric (a session created through Composery sign-in is now
+actually cleared by Sign Out), and lets base/href go entirely.
+
+--- a/src/node/http.ts
++++ b/src/node/http.ts
+@@ -1,4 +1,4 @@
+-import { field, logger } from "@coder/logger"
++import { logger } from "@coder/logger"
+ import * as express from "express"
+ import * as http from "http"
+ import * as net from "net"
+@@ -10,10 +10,8 @@ import { AuthType, DefaultedArgs } from "./cli"
+ import { version as codeServerVersion } from "./constants"
+ import { Heart } from "./heart"
+ import { CoderSettings, SettingsProvider } from "./settings"
++import { isSessionTokenValid } from "./session"
+ import {
+-  getPasswordMethod,
+-  IsCookieValidArgs,
+-  isCookieValid,
+   sanitizeString,
+   escapeHtml,
+   escapeJSON,
+@@ -118,17 +116,7 @@ export const authenticated = async (req: express.Request): Promise<boolean> => {
+       return true
+     }
+     case AuthType.Password: {
+-      // The password is stored in the cookie after being hashed.
+-      const hashedPasswordFromArgs = req.args["hashed-password"]
+-      const passwordMethod = getPasswordMethod(hashedPasswordFromArgs)
+-      const isCookieValidArgs: IsCookieValidArgs = {
+-        passwordMethod,
+-        cookieKey: sanitizeString(req.cookies[req.cookieSessionName]),
+-        passwordFromArgs: req.args.password || "",
+-        hashedPasswordFromArgs: req.args["hashed-password"],
+-      }
+-
+-      return await isCookieValid(isCookieValidArgs)
++      return isSessionTokenValid(sanitizeString(req.cookies[req.cookieSessionName]), req.args)
+     }
+     default: {
+       throw new Error(`Unsupported auth type ${req.args.auth}`)
+@@ -196,53 +184,6 @@ export const redirect = (req: express.Request, res: express.Response, to: string
+   res.redirect(redirectPath)
+ }
+ 
+-/**
+- * Get the value that should be used for setting a cookie domain. This will
+- * allow the user to authenticate once no matter what sub-domain they use to log
+- * in. This will use the highest level proxy domain (e.g. `coder.com` over
+- * `test.coder.com` if both are specified).
+- */
+-export const getCookieDomain = (host: string, proxyDomains: string[]): string | undefined => {
+-  const idx = host.lastIndexOf(":")
+-  host = idx !== -1 ? host.substring(0, idx) : host
+-  // If any of these are true we will still set cookies but without an explicit
+-  // `Domain` attribute on the cookie.
+-  if (
+-    // The host can be be blank or missing so there's nothing we can set.
+-    !host ||
+-    // IP addresses can't have subdomains so there's no value in setting the
+-    // domain for them. Assume that anything with a : is ipv6 (valid domain name
+-    // characters are alphanumeric or dashes)...
+-    host.includes(":") ||
+-    // ...and that anything entirely numbers and dots is ipv4 (currently tlds
+-    // cannot be entirely numbers).
+-    !/[^0-9.]/.test(host) ||
+-    // localhost subdomains don't seem to work at all (browser bug?). A cookie
+-    // set at dev.localhost cannot be read by 8080.dev.localhost.
+-    host.endsWith(".localhost") ||
+-    // Domains without at least one dot (technically two since domain.tld will
+-    // become .domain.tld) are considered invalid according to the spec so don't
+-    // set the domain for them. In my testing though localhost is the only
+-    // problem (the browser just doesn't store the cookie at all). localhost has
+-    // an additional problem which is that a reverse proxy might give
+-    // code-server localhost even though the domain is really domain.tld (by
+-    // default NGINX does this).
+-    !host.includes(".")
+-  ) {
+-    logger.debug("no valid cookie domain", field("host", host))
+-    return undefined
+-  }
+-
+-  proxyDomains.forEach((domain) => {
+-    if (host.endsWith(domain) && domain.length < host.length) {
+-      host = domain
+-    }
+-  })
+-
+-  logger.debug("got cookie domain", field("host", host))
+-  return host || undefined
+-}
+-
+ /**
+  * Return a function capable of fully disposing an HTTP server.
+  */
+@@ -294,31 +235,30 @@ export function disposer(server: http.Server): Disposable["dispose"] {
+ }
+ 
+ /**
+- * Get the options for setting a cookie.  The options must be identical for
+- * setting and unsetting cookies otherwise they are considered separate.
++ * Get the options for setting and clearing the session cookie.  They must be
++ * identical in both places or the browser keeps them as separate cookies and
++ * signing out leaves one behind.
++ *
++ * The scope is the origin root, not the workbench mount: this same server also
++ * answers /proxy and /absproxy above that mount, and a cookie the browser will
++ * not send there cannot authenticate them.  None of it is taken from the
++ * request body or query either - a client that can choose the Domain can widen
++ * its own session to a parent domain.  Instances sharing one origin are kept
++ * apart by --cookie-suffix instead.
+  */
+ export const getCookieOptions = (req: express.Request): express.CookieOptions => {
+-  // Normally we set paths relatively.  However browsers do not appear to allow
+-  // cookies to be set relatively which means we need an absolute path.  We
+-  // cannot be guaranteed we know the path since a reverse proxy might have
+-  // rewritten it.  That means we need to get the path from the frontend.
+-
+-  // The reason we need to set the path (as opposed to defaulting to /) is to
+-  // avoid code-server instances on different sub-paths clobbering each other or
+-  // from accessing each other's tokens (and to prevent other services from
+-  // accessing code-server's tokens).
+-
+-  // When logging in or out the request must include the href (the full current
+-  // URL of that page) and the relative path to the root as given to it by the
+-  // backend.  Using these two we can determine the true absolute root.
+-  const url = new URL(
+-    req.query.base || req.body?.base || "/",
+-    req.query.href || req.body?.href || "http://" + (req.headers.host || "localhost"),
+-  )
++  const forwardedProtocol = req.headers["x-forwarded-proto"]
+   return {
+-    domain: getCookieDomain(url.host, req.args["proxy-domain"]),
+-    path: normalize(url.pathname) || "/",
++    httpOnly: true,
++    path: "/",
+     sameSite: "lax",
++    // Marking a cookie secure on a plain-HTTP deployment makes the browser drop
++    // it, locking out every LAN and loopback instance, so claim it only where this
++    // reply demonstrably travelled over TLS.
++    secure:
++      req.secure ||
++      (typeof forwardedProtocol === "string" &&
++        forwardedProtocol.split(",", 1)[0]?.trim().toLowerCase() === "https"),
+   }
+ }
+ 
+--- a/src/node/routes/logout.ts
++++ b/src/node/routes/logout.ts
+@@ -1,13 +1,12 @@
+ import { Router } from "express"
+ import { getCookieOptions, redirect } from "../http"
+-import { sanitizeString } from "../util"
++import { returnPath } from "./authPage"
+ 
+ export const router = Router()
+ 
+-router.get<{}, undefined, undefined, { base?: string; to?: string }>("/", async (req, res) => {
++router.get<{}, undefined, undefined, { to?: string }>("/", async (req, res) => {
+   // Must use the *identical* properties used to set the cookie.
+   res.clearCookie(req.cookieSessionName, getCookieOptions(req))
+ 
+-  const to = sanitizeString(req.query.to) || "/"
+-  return redirect(req, res, to, { to: undefined, base: undefined, href: undefined })
++  return redirect(req, res, returnPath(req.query.to), { to: undefined })
+ })

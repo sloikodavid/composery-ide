@@ -1,0 +1,507 @@
+One pty, many clients.
+
+A persistent terminal is watched by every browser tab, phone and API attachment
+at once, and the pty underneath has exactly one size and one acknowledgement
+counter. So the pty host keeps a registry of its clients and arbitrates both
+from it, rather than each caller racing to set them.
+
+Size. Every client keeps reporting its own geometry, and the most recently
+activated one wins - activation being the interactions that mean "I am looking
+at this": pointer down, wheel, focus, becoming visible, a replay landing. A
+phone toggling its keyboard cannot resize a desktop viewer's shell, and when the
+active client leaves, the terminal falls back to the most recently active client
+that still has a viewport. One that only ever reported a layout is never
+promoted: it never asked for the terminal to be its size.
+
+Flow control. Output is a broadcast but the counter is single, so the
+furthest-ahead client drives it: a client that stops reading pauses its own
+socket rather than the terminal everyone else is watching, and a second
+attachment cannot acknowledge bytes another already did. With nobody registered
+the pty drains freely - a terminal whose last reader disconnected keeps running,
+and the serializer still records the output for replay.
+
+Only what the pty itself has to arbitrate is here. The names being arbitrated
+between are the ones the server channel gives out, and which client holds a
+terminal, receives its output or owns its replay is that channel's own registry
+(terminal-sharing.diff).
+
+--- a/lib/vscode/src/vs/platform/terminal/common/terminal.ts
++++ b/lib/vscode/src/vs/platform/terminal/common/terminal.ts
+@@ -337,6 +337,10 @@ export interface IPtyService {
+ 	 * Lists all orphaned processes, ie. those without a connected frontend.
+ 	 */
+ 	listProcesses(includeAttached?: boolean): Promise<IProcessDetails[]>;
++	registerTerminalClient(id: number, clientId: string): Promise<void>;
++	unregisterTerminalClient(id: number, clientId: string): Promise<void>;
++	resizeTerminalViewport(id: number, clientId: string, cols: number, rows: number, pixelWidth?: number, pixelHeight?: number): Promise<void>;
++	activateTerminalViewport(id: number, clientId: string, cols: number, rows: number, pixelWidth?: number, pixelHeight?: number): Promise<void>;
+ 	getPerformanceMarks(): Promise<performance.PerformanceMark[]>;
+ 	/**
+ 	 * Measures and returns the latency of the current and all other processes to the pty host.
+@@ -351,7 +355,7 @@ export interface IPtyService {
+ 	clearBuffer(id: number): Promise<void>;
+ 	getInitialCwd(id: number): Promise<string>;
+ 	getCwd(id: number): Promise<string>;
+-	acknowledgeDataEvent(id: number, charCount: number): Promise<void>;
++	acknowledgeDataEvent(id: number, charCount: number, clientId: string): Promise<void>;
+ 	setNextCommandId(id: number, commandLine: string, commandId: string): Promise<void>;
+ 	setUnicodeVersion(id: number, version: '6' | '11'): Promise<void>;
+ 	processBinary(id: number, data: string): Promise<void>;
+@@ -830,6 +834,7 @@ export interface ITerminalChildProcess {
+ 	sendSignal(signal: string): void;
+ 	processBinary(data: string): Promise<void>;
+ 	resize(cols: number, rows: number, pixelWidth?: number, pixelHeight?: number): void;
++	activateViewport?(cols: number, rows: number, pixelWidth?: number, pixelHeight?: number): void;
+ 	clearBuffer(): void | Promise<void>;
+ 
+ 	/**
+--- a/lib/vscode/src/vs/platform/terminal/node/ptyHostService.ts
++++ b/lib/vscode/src/vs/platform/terminal/node/ptyHostService.ts
+@@ -232,6 +232,18 @@ export class PtyHostService extends Disposable implements IPtyHostService {
+ 	listProcesses(includeAttached?: boolean): Promise<IProcessDetails[]> {
+ 		return this._proxy.listProcesses(includeAttached);
+ 	}
++	registerTerminalClient(id: number, clientId: string): Promise<void> {
++		return this._proxy.registerTerminalClient(id, clientId);
++	}
++	unregisterTerminalClient(id: number, clientId: string): Promise<void> {
++		return this._proxy.unregisterTerminalClient(id, clientId);
++	}
++	resizeTerminalViewport(id: number, clientId: string, cols: number, rows: number, pixelWidth?: number, pixelHeight?: number): Promise<void> {
++		return this._proxy.resizeTerminalViewport(id, clientId, cols, rows, pixelWidth, pixelHeight);
++	}
++	activateTerminalViewport(id: number, clientId: string, cols: number, rows: number, pixelWidth?: number, pixelHeight?: number): Promise<void> {
++		return this._proxy.activateTerminalViewport(id, clientId, cols, rows, pixelWidth, pixelHeight);
++	}
+ 	async getPerformanceMarks(): Promise<performance.PerformanceMark[]> {
+ 		return this._optionalProxy?.getPerformanceMarks() ?? [];
+ 	}
+@@ -259,8 +271,8 @@ export class PtyHostService extends Disposable implements IPtyHostService {
+ 	clearBuffer(id: number): Promise<void> {
+ 		return this._proxy.clearBuffer(id);
+ 	}
+-	acknowledgeDataEvent(id: number, charCount: number): Promise<void> {
+-		return this._proxy.acknowledgeDataEvent(id, charCount);
++	acknowledgeDataEvent(id: number, charCount: number, clientId: string): Promise<void> {
++		return this._proxy.acknowledgeDataEvent(id, charCount, clientId);
+ 	}
+ 	setUnicodeVersion(id: number, version: '6' | '11'): Promise<void> {
+ 		return this._proxy.setUnicodeVersion(id, version);
+--- a/lib/vscode/src/vs/platform/terminal/node/ptyService.ts
++++ b/lib/vscode/src/vs/platform/terminal/node/ptyService.ts
+@@ -20,6 +20,7 @@ import type { Unicode11Addon as XtermUnicode11Addon } from '@xterm/addon-unicode
+ import { IGetTerminalLayoutInfoArgs, IProcessDetails, ISetTerminalLayoutInfoArgs, ITerminalTabLayoutInfoDto } from '../common/terminalProcess.js';
+ import { sanitizeEnvForLogging } from './terminalEnvironment.js';
+ import { TerminalProcess } from './terminalProcess.js';
++import { IViewportDimensions, TerminalClients } from './terminalClients.js';
+ import { localize } from '../../../nls.js';
+ import { ignoreProcessNames } from './childProcessMonitor.js';
+ import { ErrorNoTelemetry } from '../../../base/common/errors.js';
+@@ -409,6 +410,26 @@ export class PtyService extends Disposable implements IPtyService {
+ 		}
+ 	}
+ 
++	@traceRpc
++	async registerTerminalClient(id: number, clientId: string): Promise<void> {
++		this._throwIfNoPty(id).registerClient(clientId);
++	}
++
++	@traceRpc
++	async unregisterTerminalClient(id: number, clientId: string): Promise<void> {
++		this._ptys.get(id)?.unregisterClient(clientId);
++	}
++
++	@traceRpc
++	async resizeTerminalViewport(id: number, clientId: string, cols: number, rows: number, pixelWidth?: number, pixelHeight?: number): Promise<void> {
++		this._throwIfNoPty(id).resizeViewport(clientId, { cols, rows, pixelWidth, pixelHeight });
++	}
++
++	@traceRpc
++	async activateTerminalViewport(id: number, clientId: string, cols: number, rows: number, pixelWidth?: number, pixelHeight?: number): Promise<void> {
++		this._throwIfNoPty(id).activateViewport(clientId, { cols, rows, pixelWidth, pixelHeight });
++	}
++
+ 	@traceRpc
+ 	async updateTitle(id: number, title: string, titleSource: TitleEventSource): Promise<void> {
+ 		this._throwIfNoPty(id).setTitle(title, titleSource);
+@@ -509,8 +530,8 @@ export class PtyService extends Disposable implements IPtyService {
+ 		return this._throwIfNoPty(id).getCwd();
+ 	}
+ 	@traceRpc
+-	async acknowledgeDataEvent(id: number, charCount: number): Promise<void> {
+-		return this._throwIfNoPty(id).acknowledgeDataEvent(charCount);
++	async acknowledgeDataEvent(id: number, charCount: number, clientId: string): Promise<void> {
++		return this._throwIfNoPty(id).acknowledgeDataEvent(charCount, clientId);
+ 	}
+ 	@traceRpc
+ 	async setUnicodeVersion(id: number, version: '6' | '11'): Promise<void> {
+@@ -724,6 +745,7 @@ const enum InteractionState {
+ class PersistentTerminalProcess extends Disposable {
+ 
+ 	private readonly _bufferer: TerminalDataBufferer;
++	private readonly _clients: TerminalClients;
+ 
+ 	private readonly _pendingCommands = new Map<number, { resolve: (data: unknown) => void; reject: (err: unknown) => void }>();
+ 
+@@ -817,6 +839,11 @@ class PersistentTerminalProcess extends Disposable {
+ 		fixedDimensions?: IFixedTerminalDimensions
+ 	) {
+ 		super();
++		this._clients = new TerminalClients(
++			{ cols, rows },
++			charCount => this._terminalProcess.acknowledgeDataEvent(charCount),
++			dimensions => this._applyResize(dimensions)
++		);
+ 		this._interactionState = new MutationLogger(`Persistent process "${this._persistentProcessId}" interaction state`, InteractionState.None, this._logService);
+ 		this._wasRevived = reviveBuffer !== undefined;
+ 		this._serializer = new XtermSerializer(
+@@ -857,8 +884,11 @@ class PersistentTerminalProcess extends Disposable {
+ 		this._bufferer = new TerminalDataBufferer((_, data) => this._onProcessData.fire(data));
+ 		this._register(this._bufferer.startBuffering(this._persistentProcessId, this._terminalProcess.onProcessData));
+ 
+-		// Data recording for reconnect
+-		this._register(this.onProcessData(e => this._serializer.handleData(e)));
++		// Data recording for reconnect, and one shared flow-control sequence.
++		this._register(this.onProcessData(e => {
++			this._clients.acceptData(e.length);
++			this._serializer.handleData(e);
++		}));
+ 	}
+ 
+ 	async attach(): Promise<void> {
+@@ -883,6 +913,22 @@ class PersistentTerminalProcess extends Disposable {
+ 		return this._serializer.generateReplayEvent(true, this._interactionState.value !== InteractionState.Session);
+ 	}
+ 
++	registerClient(clientId: string): void {
++		this._clients.register(clientId);
++	}
++
++	unregisterClient(clientId: string): void {
++		this._clients.unregister(clientId);
++	}
++
++	resizeViewport(clientId: string, viewport: IViewportDimensions): void {
++		this._clients.resizeViewport(clientId, viewport);
++	}
++
++	activateViewport(clientId: string, viewport: IViewportDimensions): void {
++		this._clients.activateViewport(clientId, viewport);
++	}
++
+ 	async refreshProperty<T extends ProcessPropertyType>(type: T): Promise<IProcessPropertyMap[T]> {
+ 		return this._terminalProcess.refreshProperty(type);
+ 	}
+@@ -942,15 +988,20 @@ class PersistentTerminalProcess extends Disposable {
+ 		return this._terminalProcess.processBinary(data);
+ 	}
+ 	resize(cols: number, rows: number, pixelWidth?: number, pixelHeight?: number): void {
++		this._clients.resize({ cols, rows, pixelWidth, pixelHeight });
++	}
++
++	private _applyResize(dimensions: IViewportDimensions): boolean {
+ 		if (this._inReplay) {
+-			return;
++			return false;
+ 		}
+-		this._serializer.handleResize(cols, rows);
++		this._serializer.handleResize(dimensions.cols, dimensions.rows);
+ 
+ 		// Buffered events should flush when a resize occurs
+ 		this._bufferer.flushBuffer(this._persistentProcessId);
+ 
+-		return this._terminalProcess.resize(cols, rows, pixelWidth, pixelHeight);
++		this._terminalProcess.resize(dimensions.cols, dimensions.rows, dimensions.pixelWidth, dimensions.pixelHeight);
++		return true;
+ 	}
+ 	async clearBuffer(): Promise<void> {
+ 		this._serializer.clearBuffer();
+@@ -966,11 +1017,11 @@ class PersistentTerminalProcess extends Disposable {
+ 		this._serializer.setNextCommandId?.(commandLine, commandId);
+ 	}
+ 
+-	acknowledgeDataEvent(charCount: number): void {
++	acknowledgeDataEvent(charCount: number, clientId: string): void {
+ 		if (this._inReplay) {
+ 			return;
+ 		}
+-		return this._terminalProcess.acknowledgeDataEvent(charCount);
++		return this._clients.acknowledge(clientId, charCount);
+ 	}
+ 	getInitialCwd(): Promise<string> {
+ 		return this._terminalProcess.getInitialCwd();
+@@ -991,6 +1042,7 @@ class PersistentTerminalProcess extends Disposable {
+ 		this._logService.info(`Persistent process "${this._persistentProcessId}": Replaying ${dataLength} chars and ${ev.events.length} size events`);
+ 		this._onProcessReplay.fire(ev);
+ 		this._terminalProcess.clearUnacknowledgedChars();
++		this._clients.resetAfterReplay();
+ 		this._onPersistentProcessReady.fire();
+ 	}
+ 
+--- a/lib/vscode/src/vs/server/node/remoteTerminalChannel.ts
++++ b/lib/vscode/src/vs/server/node/remoteTerminalChannel.ts
+@@ -288,6 +288,7 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
+ 				this._addWorkspaceClient(createArgs.workspaceId, ctx.clientId);
+ 				const result = await this._createProcess(uriTransformer, createArgs);
+ 				this._clientState.attach(result.persistentTerminalId, ctx.clientId, true, true);
++				await this._ptyHostService.registerTerminalClient(result.persistentTerminalId, ctx.clientId);
+ 				this._freshPtys.add(result.persistentTerminalId);
+ 				this._processWorkspaces.set(result.persistentTerminalId, { workspaceId: createArgs.workspaceId, persistent: createArgs.shouldPersistTerminal });
+ 				return result;
+@@ -295,6 +296,7 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
+ 			case RemoteTerminalChannelRequest.AttachToProcess: {
+ 				await this._ptyHostService.attachToProcess(args[0]);
+ 				this._clientState.attach(args[0], ctx.clientId, false);
++				await this._ptyHostService.registerTerminalClient(args[0], ctx.clientId);
+ 				return;
+ 			}
+ 			case RemoteTerminalChannelRequest.DetachFromProcess: {
+@@ -302,6 +304,7 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
+ 				if (!detached.attached) {
+ 					return;
+ 				}
++				await this._ptyHostService.unregisterTerminalClient(args[0], ctx.clientId);
+ 				return detached.final ? this._ptyHostService.detachFromProcess(args[0], args[1]) : undefined;
+ 			}
+ 
+@@ -337,9 +340,28 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
+ 				return this._ptyHostService.input(args[0], args[1]);
+ 			}
+ 			case RemoteTerminalChannelRequest.SendSignal: return this._ptyHostService.sendSignal.apply(this._ptyHostService, args);
+-			case RemoteTerminalChannelRequest.AcknowledgeDataEvent: return this._ptyHostService.acknowledgeDataEvent.apply(this._ptyHostService, args);
++			case RemoteTerminalChannelRequest.AcknowledgeDataEvent: {
++				// Unlike the guards above this one does not throw: acknowledgements are
++				// buffered and fire-and-forget, so one arriving just after its client
++				// detached is routine, and the pty no longer has a slot to credit it to.
++				if (!this._clientState.isAttached(args[0], ctx.clientId)) {
++					return;
++				}
++				return this._ptyHostService.acknowledgeDataEvent(args[0], args[1], ctx.clientId);
++			}
+ 			case RemoteTerminalChannelRequest.Shutdown: return this._ptyHostService.shutdown.apply(this._ptyHostService, args);
+-			case RemoteTerminalChannelRequest.Resize: return this._ptyHostService.resize.apply(this._ptyHostService, args);
++			case RemoteTerminalChannelRequest.Resize: {
++				if (!this._clientState.isAttached(args[0], ctx.clientId)) {
++					throw new Error(`Client "${ctx.clientId}" is not attached to terminal "${args[0]}"`);
++				}
++				return this._ptyHostService.resizeTerminalViewport(args[0], ctx.clientId, args[1], args[2], args[3], args[4]);
++			}
++			case RemoteTerminalChannelRequest.ActivateViewport: {
++				if (!this._clientState.isAttached(args[0], ctx.clientId)) {
++					throw new Error(`Client "${ctx.clientId}" is not attached to terminal "${args[0]}"`);
++				}
++				return this._ptyHostService.activateTerminalViewport(args[0], ctx.clientId, args[1], args[2], args[3], args[4]);
++			}
+ 			case RemoteTerminalChannelRequest.ClearBuffer: return this._ptyHostService.clearBuffer.apply(this._ptyHostService, args);
+ 			case RemoteTerminalChannelRequest.GetInitialCwd: return this._ptyHostService.getInitialCwd.apply(this._ptyHostService, args);
+ 			case RemoteTerminalChannelRequest.GetCwd: return this._ptyHostService.getCwd.apply(this._ptyHostService, args);
+@@ -447,6 +469,7 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
+ 					clients.delete(clientId);
+ 				}
+ 				for (const detached of this._clientState.detachClient(clientId)) {
++					void this._ptyHostService.unregisterTerminalClient(detached.id, clientId);
+ 					if (detached.final) {
+ 						void this._ptyHostService.detachFromProcess(detached.id);
+ 					}
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/remotePty.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/remotePty.ts
+@@ -91,6 +91,15 @@ export class RemotePty extends BasePty implements ITerminalChildProcess {
+ 		});
+ 	}
+ 
++	activateViewport(cols: number, rows: number, pixelWidth?: number, pixelHeight?: number): void {
++		if (this._inReplay) {
++			return;
++		}
++		this._startBarrier.wait().then(_ => {
++			this._remoteTerminalChannel.activateViewport(this.id, cols, rows, pixelWidth, pixelHeight);
++		});
++	}
++
+ 	async clearBuffer(): Promise<void> {
+ 		await this._remoteTerminalChannel.clearBuffer(this.id);
+ 	}
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstance.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstance.ts
+@@ -79,6 +79,7 @@ import { getUriLabelForShell, getShellIntegrationTimeout, getWorkspaceForTermina
+ import { IEditorService } from '../../../services/editor/common/editorService.js';
+ import { IWorkbenchEnvironmentService } from '../../../services/environment/common/environmentService.js';
+ import { IHistoryService } from '../../../services/history/common/history.js';
++import { IHostService } from '../../../services/host/browser/host.js';
+ import { isHorizontal, IWorkbenchLayoutService } from '../../../services/layout/browser/layoutService.js';
+ import { IPathService } from '../../../services/path/common/pathService.js';
+ import { IPreferencesService } from '../../../services/preferences/common/preferences.js';
+@@ -407,6 +408,7 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
+ 		@ICommandService private readonly _commandService: ICommandService,
+ 		@IAccessibilitySignalService private readonly _accessibilitySignalService: IAccessibilitySignalService,
+ 		@IViewDescriptorService private readonly _viewDescriptorService: IViewDescriptorService,
++		@IHostService private readonly _hostService: IHostService,
+ 	) {
+ 		super();
+ 
+@@ -537,6 +539,11 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
+ 		this.statusList = this._register(this._scopedInstantiationService.createInstance(TerminalStatusList));
+ 		this._initDimensions();
+ 		this._processManager = this._createProcessManager();
++		this._register(this._hostService.onDidChangeFocus(focused => {
++			if (focused && this._isVisible) {
++				this._activateViewport();
++			}
++		}));
+ 
+ 		this._containerReadyBarrier = new AutoOpenBarrier(Constants.WaitForContainerThreshold);
+ 		this._attachBarrier = new AutoOpenBarrier(1000);
+@@ -1202,6 +1209,8 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
+ 
+ 			return true;
+ 		});
++		this._register(dom.addDisposableListener(xterm.raw.element, dom.EventType.POINTER_DOWN, () => this._activateViewport(), { passive: true }));
++		this._register(dom.addDisposableListener(xterm.raw.element, dom.EventType.MOUSE_WHEEL, () => this._activateViewport(), { passive: true }));
+ 		this._register(dom.addDisposableListener(xterm.raw.element, 'mousedown', () => {
+ 			// We need to listen to the mouseup event on the document since the user may release
+ 			// the mouse button anywhere outside of _xterm.element.
+@@ -1267,6 +1276,7 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
+ 
+ 	private _setFocus(focused?: boolean): void {
+ 		if (focused) {
++			this._activateViewport();
+ 			this._terminalFocusContextKey.set(true);
+ 			this._setShellIntegrationContextKey();
+ 			this._onDidFocus.fire(this);
+@@ -1462,7 +1472,11 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
+ 			// Resize to re-evaluate dimensions, this will ensure when switching to a terminal it is
+ 			// using the most up to date dimensions (eg. when terminal is created in the background
+ 			// using cached dimensions of a split terminal).
+-			this._resize();
++			void this._resize().then(() => {
++				if (this._hostService.hasFocus) {
++					this._activateViewport();
++				}
++			});
+ 		}
+ 		if (didChange) {
+ 			this._onDidChangeVisibility.fire(visible);
+@@ -1597,7 +1611,12 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
+ 		}));
+ 
+ 		this._initialDataEventsListener.value = processManager.onProcessData(ev => this._initialDataEvents?.push(ev.data));
+-		this._register(processManager.onProcessReplayComplete(() => this._onProcessReplayComplete.fire()));
++		this._register(processManager.onProcessReplayComplete(() => {
++			this._onProcessReplayComplete.fire();
++			if (this._isVisible && this._hostService.hasFocus) {
++				this._activateViewport();
++			}
++		}));
+ 		this._register(processManager.onEnvironmentVariableInfoChanged(e => this._onEnvironmentVariableInfoChanged(e)));
+ 		this._register(processManager.onPtyDisconnect(() => {
+ 			if (this.xterm) {
+@@ -2114,6 +2133,24 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
+ 		await this._processManager.setDimensions(rawXterm.cols, rawXterm.rows, undefined, roundedPixelWidth, roundedPixelHeight);
+ 	}
+ 
++	// This client is the one looking at the terminal, so the pty should be its
++	// size. Every attached client keeps reporting its own geometry; only the one
++	// that was last interacted with gets to impose it.
++	private _activateViewport(): void {
++		const rawXterm = this.xterm?.raw;
++		if (!this._isVisible || !rawXterm) {
++			return;
++		}
++		const pixelWidth = rawXterm.dimensions?.css.canvas.width;
++		const pixelHeight = rawXterm.dimensions?.css.canvas.height;
++		void this._processManager.activateViewport(
++			rawXterm.cols,
++			rawXterm.rows,
++			pixelWidth ? Math.round(pixelWidth) : undefined,
++			pixelHeight ? Math.round(pixelHeight) : undefined
++		);
++	}
++
+ 	setShellType(shellType: TerminalShellType | undefined) {
+ 		if (this._shellType === shellType) {
+ 			return;
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalProcessManager.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalProcessManager.ts
+@@ -622,6 +622,11 @@ export class TerminalProcessManager extends Disposable implements ITerminalProce
+ 		return this.ptyProcessReady.then(() => this._resize(cols, rows, pixelWidth, pixelHeight));
+ 	}
+ 
++	async activateViewport(cols: number, rows: number, pixelWidth?: number, pixelHeight?: number): Promise<void> {
++		await this.ptyProcessReady;
++		this._process?.activateViewport?.(cols, rows, pixelWidth, pixelHeight);
++	}
++
+ 	async setUnicodeVersion(version: '6' | '11'): Promise<void> {
+ 		return this._process?.setUnicodeVersion(version);
+ 	}
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/common/remote/remoteTerminalChannel.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/common/remote/remoteTerminalChannel.ts
+@@ -257,6 +257,9 @@ export class RemoteTerminalChannelClient implements IPtyHostController {
+ 	resize(id: number, cols: number, rows: number, pixelWidth?: number, pixelHeight?: number): Promise<void> {
+ 		return this._channel.call(RemoteTerminalChannelRequest.Resize, [id, cols, rows, pixelWidth, pixelHeight]);
+ 	}
++	activateViewport(id: number, cols: number, rows: number, pixelWidth?: number, pixelHeight?: number): Promise<void> {
++		return this._channel.call(RemoteTerminalChannelRequest.ActivateViewport, [id, cols, rows, pixelWidth, pixelHeight]);
++	}
+ 	clearBuffer(id: number): Promise<void> {
+ 		return this._channel.call(RemoteTerminalChannelRequest.ClearBuffer, [id]);
+ 	}
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/common/remote/terminal.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/common/remote/terminal.ts
+@@ -74,6 +74,7 @@ export const enum RemoteTerminalChannelRequest {
+ 	AcknowledgeDataEvent = '$acknowledgeDataEvent',
+ 	Shutdown = '$shutdown',
+ 	Resize = '$resize',
++	ActivateViewport = '$activateViewport',
+ 	ClearBuffer = '$clearBuffer',
+ 	GetInitialCwd = '$getInitialCwd',
+ 	GetCwd = '$getCwd',
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/common/terminal.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/common/terminal.ts
+@@ -307,6 +307,7 @@ export interface ITerminalProcessManager extends IDisposable, ITerminalProcessIn
+ 	setDimensions(cols: number, rows: number, sync?: undefined, pixelWidth?: number, pixelHeight?: number): Promise<void>;
+ 	setDimensions(cols: number, rows: number, sync: false, pixelWidth?: number, pixelHeight?: number): Promise<void>;
+ 	setDimensions(cols: number, rows: number, sync: true, pixelWidth?: number, pixelHeight?: number): void;
++	activateViewport(cols: number, rows: number, pixelWidth?: number, pixelHeight?: number): Promise<void>;
+ 	clearBuffer(): Promise<void>;
+ 	setUnicodeVersion(version: '6' | '11'): Promise<void>;
+ 	setNextCommandId(commandLine: string, commandId: string): Promise<void>;
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/electron-browser/localPty.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/electron-browser/localPty.ts
+@@ -11,12 +11,19 @@ import { BasePty } from '../common/basePty.js';
+  * created on the local pty host.
+  */
+ export class LocalPty extends BasePty implements ITerminalChildProcess {
++	// Composery: the pty host names every client watching a terminal so that one
++	// counter can serve them all. One window talks to the local pty host, so the
++	// local backend is that single client - named, like every other one, rather
++	// than acknowledging into a slot nothing registered.
++	private static readonly _clientId = 'local';
++
+ 	constructor(
+ 		id: number,
+ 		shouldPersist: boolean,
+ 		private readonly _proxy: IPtyService
+ 	) {
+ 		super(id, shouldPersist);
++		this._proxy.registerTerminalClient(this.id, LocalPty._clientId);
+ 	}
+ 
+ 	start(): Promise<ITerminalLaunchError | ITerminalLaunchResult | undefined> {
+@@ -24,6 +31,7 @@ export class LocalPty extends BasePty implements ITerminalChildProcess {
+ 	}
+ 
+ 	detach(forcePersist?: boolean): Promise<void> {
++		this._proxy.unregisterTerminalClient(this.id, LocalPty._clientId);
+ 		return this._proxy.detachFromProcess(this.id, forcePersist);
+ 	}
+ 
+@@ -84,7 +92,7 @@ export class LocalPty extends BasePty implements ITerminalChildProcess {
+ 		if (this._inReplay) {
+ 			return;
+ 		}
+-		this._proxy.acknowledgeDataEvent(this.id, charCount);
++		this._proxy.acknowledgeDataEvent(this.id, charCount, LocalPty._clientId);
+ 	}
+ 
+ 	setUnicodeVersion(version: '6' | '11'): Promise<void> {

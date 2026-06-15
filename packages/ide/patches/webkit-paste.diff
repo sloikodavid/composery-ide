@@ -1,0 +1,39 @@
+Paste in the editor on WebKit.
+
+The editor's paste falls back to navigator.clipboard.readText() on web, which
+WebKit refuses there ("Unable to read from the browser's clipboard") even though
+the very same gesture copies fine via execCommand. Fill in the triggerPaste()
+hook - upstream's own opt-out from that fallback, a stub in the browser and
+nativeHost in Electron - with execCommand('paste'), which WebKit alone
+implements behind its native paste callout. That yields a real paste event
+carrying clipboardData, the mechanism copy already uses here.
+
+It returns undefined when refused, so every other engine keeps the readText path
+unchanged. A vendor defect, kept individually deletable: delete this patch the
+day WebKit allows the clipboard read the rest of the page already gets.
+
+--- a/lib/vscode/src/vs/platform/clipboard/browser/clipboardService.ts
++++ b/lib/vscode/src/vs/platform/clipboard/browser/clipboardService.ts
+@@ -47,7 +47,21 @@ export class BrowserClipboardService extends Disposable implements IClipboardSer
+ 
+ 	triggerPaste(): Promise<void> | undefined {
+ 		this.logService.trace('BrowserClipboardService#triggerPaste');
+-		return undefined;
++		// Composery: WebKit is the only engine implementing programmatic paste
++		// (execCommand('paste'), behind its native paste callout, since Safari 13). It
++		// produces a real paste event carrying clipboardData - the same mechanism the
++		// editor's copy already uses successfully on iOS - whereas the readText() the
++		// editor otherwise falls back to is a separate permission model that WebKit
++		// refuses here, surfacing as "Unable to read from the browser's clipboard".
++		// Refusal returns undefined, leaving that fallback exactly as it was for every
++		// other engine (Chromium grants the read, so Android is untouched), so this can
++		// only add a way to paste, never remove one.
++		if (isSafari || isWebkitWebView) {
++			if (getActiveDocument().execCommand('paste')) {
++				return Promise.resolve();
++			}
++		}
++		return undefined;
+ 	}
+ 
+ 	async readImage(): Promise<Uint8Array> {

@@ -1,0 +1,696 @@
+The narrow-viewport layout - everything gated on viewport geometry (the
+narrowGate overlay), independent of touch: a phone-width window shows one
+workbench part fullscreen at a time, and one editor group.
+
+- layout.ts: NARROW_PARTS fullscreen switching; boot pass seeds intent from
+  the restored layout (parts restored visible fire no visibility event, so
+  the first narrow pass would otherwise close what the user left open);
+  rotation preserves the selected part; narrow close-part events from
+  shell.js dismiss the fullscreen part on back gestures.
+- Editor groups: editorPart.ts refuses to add one while the viewport is
+  narrow, so everything that would split - the split commands, a SIDE_GROUP
+  open, a tab dropped on an edge, an extension asking for a view column -
+  opens as another tab in the group it was asked to split. A group that
+  arrives without going through addGroup (a grid restored from a session on a
+  wide screen, a copied group, a window dragged narrower) is merged into the
+  active one on the next layout. editorGroupColumn.ts stops walking columns
+  into existence once one does not appear rather than dereferencing the group
+  it never got, falling back to SIDE_GROUP as it already does for a column
+  out of range.
+- Activity bar: `composery.activityBar.narrowLocation` (default `bottom`) is
+  the narrow viewport's own activity bar location, independent of
+  `workbench.activityBar.location` - one phone and one desktop browser share one
+  Composery's settings file, so a single key would have had them moving each other's
+  activity bar. narrowActivityBar.ts mirrors the narrow value onto the upstream
+  key in the memory target so every existing reader and change listener needs no
+  teaching, and configurationService.ts redirects writes of the upstream key to
+  the narrow one while narrow, so repositioning from the phone stays there.
+  workbench.ts installs the mirror between initServices and initLayout: any later
+  and the first mirror fires a layout listener that dereferences a grid
+  createWorkbenchLayout has not built yet.
+  sidebarPart.ts keys its remembered last-visible-position storage off the same
+  question, so hiding and unhiding the activity bar on a phone cannot restore the
+  wide position into the narrow setting.
+- Titlebar: the left flex region shrinks below the menubar's intrinsic width
+  and the menubar flexes from zero, so MenuBar measures its real allocation
+  and moves labels into overflow instead of pushing the title off-screen.
+- Extension editor: feature tables get a picker (styled by narrow.css) and
+  horizontal scrolling, so wide columns stay reachable.
+- Webview content: narrow-width rules in the default stylesheet the webview pre
+  page injects into extension content. Frame-independent on purpose - no
+  viewport meta and no safe-area padding, because Chromium honours neither in a
+  nested browsing context (measured on Android Chrome 134: a subframe declaring
+  `width=500, viewport-fit=cover` laid out at the parent's 411px and read
+  env(safe-area-inset-*) as 0 while the top frame read a real 24px bottom
+  inset). What is left is border-box + max-width, so the 20px body padding
+  cannot overflow a narrow viewport, plus the text-size rules. These styles live
+  in a template literal inside the page's inline script, so the CSP hash beside
+  them covers them; the patch-stack test recomputes it.
+
+--- a/lib/vscode/src/vs/workbench/browser/layout.ts
++++ b/lib/vscode/src/vs/workbench/browser/layout.ts
+@@ -47,6 +47,7 @@ import { AuxiliaryBarPart } from './parts/auxiliarybar/auxiliaryBarPart.js';
+ import { ITelemetryService } from '../../platform/telemetry/common/telemetry.js';
+ import { IAuxiliaryWindowService } from '../services/auxiliaryWindow/browser/auxiliaryWindowService.js';
+ import { CodeWindow, mainWindow } from '../../base/browser/window.js';
++import { isNarrow } from './narrowGate.js';
+ 
+ //#region Layout Implementation
+ 
+@@ -1385,7 +1386,8 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 
+ 	private focusPanelOrEditor(): void {
+ 		const activePanel = this.paneCompositeService.getActivePaneComposite(ViewContainerLocation.Panel);
+-		if ((this.hasFocus(Parts.PANEL_PART) || !this.isVisible(Parts.EDITOR_PART)) && activePanel) {
++		// Composery: don't pull the panel up just because the editor is collapsed for narrow-viewport fullscreen.
++		if ((this.hasFocus(Parts.PANEL_PART) || (!this.isVisible(Parts.EDITOR_PART) && !this.editorHiddenForNarrowPart)) && activePanel) {
+ 			activePanel.focus(); // prefer panel if it has focus or editor is hidden
+ 		} else {
+ 			this.focus(); // otherwise focus editor
+@@ -1664,13 +1666,13 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 
+ 		for (const part of [titleBar, editorPart, activityBar, panelPart, sideBar, statusBar, auxiliaryBarPart, bannerPart]) {
+ 			this._register(part.onDidVisibilityChange(visible => {
+-				if (!this.inMaximizedAuxiliaryBarTransition) {
++				if (!this.inMaximizedAuxiliaryBarTransition && !this.inNarrowPartTransition) {
+ 
+ 					// skip reacting when we are transitioning
+-					// in or out of maximised auxiliary bar to prevent
+-					// stepping on each other toes because this
+-					// transition is already dealing with all parts
+-					// visibility efficiently.
++					// in or out of maximised auxiliary bar - or applying narrow-viewport
++					// fullscreen (Composery) - to prevent stepping on each other's
++					// toes because that transition is already dealing with all
++					// parts visibility efficiently.
+ 
+ 					if (part === sideBar) {
+ 						this.setSideBarHidden(!visible);
+@@ -1688,6 +1690,47 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 			}));
+ 		}
+ 
++		// Composery: on a narrow touch viewport keep exactly one of the side bar / panel / secondary
++		// side bar open at a time and let it fill the screen by collapsing the editor (see
++		// applyNarrowLayout). Record which part the user last opened as the intent, then apply.
++		this._register(this.onDidChangePartVisibility(({ partId, visible }) => {
++			if (Layout.NARROW_PARTS.includes(partId as Parts)) {
++				this.onContentPartVisibility(partId as Parts, visible);
++			}
++		}));
++		// Composery: an editor open REQUEST while a part is fullscreen means the editor wants the
++		// screen - exit fullscreen and reveal it. showEditorIfHidden covers most of these via
++		// toggleMaximizedPanel, but not re-opening the already-visible editor (tapping the same
++		// extension in the marketplace list fires no visible-editors change), which then reads
++		// as a dead tap. Will-open fires for every request, deduped or not.
++		this._register(this.mainPartEditorService.onWillOpenEditor(e => {
++			// An editor that opens without asking to be looked at - a task revealing a
++			// file, an extension opening its log, editors restored on reload - did not
++			// ask for the screen, and taking the part the user is working in away from
++			// them reads as the layout closing things by itself.
++			if (e.options?.preserveFocus || e.options?.inactive) {
++				return;
++			}
++
++			if (this.isNarrowViewport && this.editorHiddenForNarrowPart && !this.inNarrowPartTransition) {
++				this.narrowPart = undefined;
++				this.scheduleNarrowLayout();
++			}
++		}));
++
++		// Composery: the overlay back guard (shell.js) translates a browser/hardware back into this
++		// event while a narrow-fullscreen part is open. Close the part - back dismisses the top
++		// layer instead of leaving the page.
++		this._register(addDisposableListener(mainWindow, 'composery-narrow-close-part', () => {
++			if (this.isNarrowViewport) {
++				this.narrowPart = undefined;
++				this.scheduleNarrowLayout();
++			}
++		}));
++		// Upstream restores all three content parts asynchronously after the first layout. Reconcile
++		// once that work is done too, so a late restore cannot be the last writer to the grid.
++		this.whenReady.finally(() => this.scheduleNarrowLayout());
++
+ 		this._register(this.storageService.onWillSaveState(() => {
+ 
+ 			// Side Bar Size
+@@ -1738,6 +1781,12 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 
+ 			// Emit as event
+ 			this.handleContainerDidLayout(this.mainContainer, this._mainContainerDimension);
++
++			// Composery: every upstream layout is a convergence point for responsive state. This
++			// covers boot, resize, rotation, zoom and fullscreen instead of relying on the single
++			// MediaQueryList edge where the viewport crosses the breakpoint.
++			this.narrowPart ??= Layout.NARROW_PARTS.find(part => this.isVisible(part));
++			this.scheduleNarrowLayout();
+ 		}
+ 	}
+ 
+@@ -1887,8 +1936,10 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 		this.workbenchGrid.setViewVisible(this.editorPartView, !hidden);
+ 
+ 		// The editor and panel cannot be hidden at the same time
+-		// unless we have a maximized auxiliary bar
+-		if (hidden && !this.isVisible(Parts.PANEL_PART) && !this.isAuxiliaryBarMaximized()) {
++		// unless we have a maximized auxiliary bar (or a part is fullscreened on a narrow viewport, which
++		// deliberately collapses the editor; editorHiddenForNarrowPart stays set the whole time so the
++		// panel can't silently reappear behind the open part).
++		if (hidden && !this.isVisible(Parts.PANEL_PART) && !this.isAuxiliaryBarMaximized() && !this.editorHiddenForNarrowPart) {
+ 			this.setPanelHidden(false, true);
+ 		}
+ 	}
+@@ -2204,10 +2255,28 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 		return (
+ 			this.getPanelAlignment() === 'center' || 	// the workbench grid currently prevents us from supporting panel
+ 			!isHorizontal(this.getPanelPosition())		// maximization with non-center panel alignment
+-		) && !this.isVisible(Parts.EDITOR_PART, mainWindow) && !this.isAuxiliaryBarMaximized();
++		) && !this.isVisible(Parts.EDITOR_PART, mainWindow) && !this.isAuxiliaryBarMaximized()
++			// Composery: while we collapse the editor for narrow-viewport fullscreen the panel is not "maximized"
++			// - whichever part is the open one - so the native panel-maximize machinery stays out of it.
++			&& !this.editorHiddenForNarrowPart;
+ 	}
+ 
+ 	toggleMaximizedPanel(): void {
++		// Composery: on a narrow viewport a part is fullscreened by collapsing the editor in
++		// applyNarrowLayout, which owns that state. Native panel maximize must not touch the grid -
++		// but VS Code fires this as "reveal the editor" whenever an editor opens while the editor
++		// part is hidden (showEditorIfHidden / onDidVisibleEditorsChange). Translate that intent:
++		// an editor wants the screen, so exit fullscreen - close the open part and reveal it.
++		if (this.isNarrowViewport) {
++			// Ignore reveals our own transition provoked: hiding a sibling part (setPanelHidden's
++			// focusEditor) routes focus to the editor group, which re-fires this mid-pass and would
++			// close the part the user just opened. Only an outside signal exits fullscreen.
++			if (!this.inNarrowPartTransition) {
++				this.narrowPart = undefined;
++				this.scheduleNarrowLayout();
++			}
++			return;
++		}
+ 		const size = this.workbenchGrid.getViewSize(this.panelPartView);
+ 		const panelPosition = this.getPanelPosition();
+ 		const maximize = !this.isPanelMaximized();
+@@ -2302,6 +2371,136 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 		}
+ 	}
+ 
++	//#region Composery narrow-viewport fullscreen parts
++
++	// On a narrow touch viewport exactly one of the side bar / panel / secondary side bar is open at
++	// a time and fills the screen by collapsing the editor beneath it - the setEditorHidden(true)
++	// trick native panel/aux maximize uses, so it reads as a true 1:1 fullscreen with no grid-resize
++	// math; closing the open part reveals the editor again. editorHiddenForNarrowPart records that WE
++	// collapsed the editor: it relaxes the editor/panel "both hidden" invariant in setEditorHidden and
++	// keeps isPanelMaximized()/focusPanelOrEditor() from treating the hidden editor as a maximized panel.
++	//
++	// Modeled on native maximize (setAuxiliaryBarMaximized): every part mutation happens synchronously
++	// inside inNarrowPartTransition, which the part-visibility relay skips reacting to, so there is no
++	// re-entrant cascade. The open part is tracked as explicit intent (narrowPart), not
++	// re-read from transient visibility - so when queued visibility events drain after the transition,
++	// applyNarrowLayout sees the same intent, finds the state already correct, and converges instead
++	// of oscillating.
++	private static readonly NARROW_PARTS = [Parts.SIDEBAR_PART, Parts.PANEL_PART, Parts.AUXILIARYBAR_PART];
++	private inNarrowPartTransition = false;
++	private editorHiddenForNarrowPart = false;
++	private narrowPart: Parts | undefined;
++	private narrowLayoutScheduled = false;
++	private desktopPartVisibility: Set<Parts> | undefined;
++
++	private get isNarrowViewport(): boolean {
++		return isNarrow(mainWindow);
++	}
++
++	// A content part opened -> it becomes the fullscreen one; the open part closing -> none is. Either
++	// way re-apply, so opening any part also closes the previous one and collapses the editor.
++	private onContentPartVisibility(part: Parts, visible: boolean): void {
++		if (this.inNarrowPartTransition) {
++			return;
++		}
++
++		if (visible) {
++			this.narrowPart = part;
++		} else if (part === this.narrowPart) {
++			this.narrowPart = undefined;
++		}
++		this.scheduleNarrowLayout();
++	}
++
++	// Invoked from inside a part-visibility event delivery, so applying immediately would queue our
++	// own part mutations and let the relay react to them once inNarrowPartTransition has cleared (a
++	// cascade). Defer to a microtask: it runs at top level but still BEFORE the browser paints, so a
++	// switch between parts settles atomically - no intermediate both-parts-squeezed frame - and one
++	// microtask coalesces the burst of visibility events a single toggle produces.
++	private scheduleNarrowLayout(): void {
++		if (this.narrowLayoutScheduled) {
++			return;
++		}
++		this.narrowLayoutScheduled = true;
++		queueMicrotask(() => {
++			this.narrowLayoutScheduled = false;
++			this.applyNarrowLayout();
++		});
++	}
++
++	private applyNarrowLayout(): void {
++		if (!this.workbenchGrid || this.inNarrowPartTransition || this.inMaximizedAuxiliaryBarTransition) {
++			return;
++		}
++		this.inNarrowPartTransition = true;
++		try {
++			if (!this.isNarrowViewport) {
++				this.restoreDesktopPartVisibility();
++				return;
++			}
++			this.desktopPartVisibility ??= new Set(Layout.NARROW_PARTS.filter(part => this.isVisible(part)));
++			const keep = (this.narrowPart !== undefined && this.isVisible(this.narrowPart))
++				? this.narrowPart
++				: undefined;
++			// Exclusivity: at most one content part stays open.
++			let changed = false;
++			for (const part of Layout.NARROW_PARTS) {
++				if (part !== keep && this.isVisible(part)) {
++					this.setPartHidden(true, part);
++					changed = true;
++				}
++			}
++			// Fullscreen: collapse the editor beneath the open part, or reveal it once none is open.
++			if (keep !== undefined) {
++				this.editorHiddenForNarrowPart = true;
++				if (this.isVisible(Parts.EDITOR_PART)) {
++					this.setEditorHidden(true);
++					changed = true;
++				}
++				// Hiding the siblings/editor routes focus to the now-collapsed editor, leaving the
++				// fullscreened part (e.g. the terminal) unfocused - so on touch the on-screen keyboard
++				// never opens. Re-focus the open part, exactly as native maximize does (setAuxiliaryBarMaximized).
++				if (changed) {
++					// keep is always one of NARROW_PARTS (side bar / panel / secondary side bar),
++					// all single-window parts - same cast VS Code uses on this trio elsewhere.
++					this.focusPart(keep as SINGLE_WINDOW_PARTS);
++				}
++			} else {
++				this.revealEditorFromNarrowPart();
++			}
++		} finally {
++			this.inNarrowPartTransition = false;
++		}
++	}
++
++	private revealEditorFromNarrowPart(): void {
++		if (this.editorHiddenForNarrowPart) {
++			this.editorHiddenForNarrowPart = false;
++			if (!this.isVisible(Parts.EDITOR_PART)) {
++				this.setEditorHidden(false);
++			}
++		}
++	}
++
++	private restoreDesktopPartVisibility(): void {
++		this.revealEditorFromNarrowPart();
++		if (!this.desktopPartVisibility) {
++			return;
++		}
++		// Preserve the part the user selected while narrow when rotating wide; the snapshot restores
++		// the surrounding desktop layout, while the selected part remains the user's current context.
++		const desktopPartVisibility = new Set(this.desktopPartVisibility);
++		if (this.narrowPart !== undefined) {
++			desktopPartVisibility.add(this.narrowPart);
++		}
++		for (const part of Layout.NARROW_PARTS) {
++			this.setPartHidden(!desktopPartVisibility.has(part), part);
++		}
++		this.desktopPartVisibility = undefined;
++	}
++
++	//#endregion
++
+ 	hasMainWindowBorder(): boolean {
+ 		return this.state.runtime.mainWindowBorder;
+ 	}
+--- a/lib/vscode/src/vs/workbench/browser/parts/editor/editorGroupView.ts
++++ b/lib/vscode/src/vs/workbench/browser/parts/editor/editorGroupView.ts
+@@ -1165,7 +1165,7 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
+ 		}
+ 
+ 		// Fire the event letting everyone know we are about to open an editor
+-		this._onWillOpenEditor.fire({ editor, groupId: this.id });
++		this._onWillOpenEditor.fire({ editor, groupId: this.id, options });
+ 
+ 		// Determine options
+ 		const pinned = options?.sticky
+--- a/lib/vscode/src/vs/workbench/browser/parts/editor/editorPart.ts
++++ b/lib/vscode/src/vs/workbench/browser/parts/editor/editorPart.ts
+@@ -36,6 +36,7 @@ import { IContextKeyService } from '../../../../platform/contextkey/common/conte
+ import { ServiceCollection } from '../../../../platform/instantiation/common/serviceCollection.js';
+ import { EditorAreaFocusContext, EditorPartMaximizedEditorGroupContext, EditorPartMultipleEditorGroupsContext, EditorTabsVisibleContext, IsTopRightEditorGroupContext } from '../../../common/contextkeys.js';
+ import { mainWindow } from '../../../../base/browser/window.js';
++import { isNarrow } from '../../narrowGate.js';
+ 
+ /**
+  * The width (in pixels) of the editor card border drawn on every side when the
+@@ -587,6 +588,20 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
+ 	addGroup(location: IEditorGroupView | GroupIdentifier, direction: GroupDirection, groupToCopy?: IEditorGroupView): IEditorGroupView {
+ 		const locationView = this.assertGroupView(location);
+ 
++		// Composery: a narrow viewport has no room to put two editors beside each other, so it
++		// never gets a second editor group. Every caller that would split - the split commands,
++		// a SIDE_GROUP open, a tab dropped on an edge, an extension asking for a view column -
++		// gets back the group it asked to split and opens there as one more tab instead. This
++		// is the half that keeps a split from being created; scheduleNarrowGroups() below is
++		// the half that removes one that arrived another way.
++		//
++		// A group being copied is left alone: it already carries editors (moveGroup hands us
++		// the source group it is about to remove), and handing back a different group would
++		// drop them. Those are merged away instead.
++		if (!groupToCopy && isNarrow(getWindow(locationView.element))) {
++			return locationView;
++		}
++
+ 		let newGroupView: IEditorGroupView;
+ 
+ 		// Same groups view: add to grid widget directly
+@@ -1421,8 +1436,50 @@ export class EditorPart extends Part<IEditorPartMemento> implements IEditorPart,
+ 
+ 		// Event
+ 		this._onDidLayout.fire(dimension);
++
++		// Composery: every layout is a convergence point for the narrow-viewport rule below -
++		// boot, restore, resize, rotation and zoom all arrive here.
++		this.scheduleNarrowGroups();
+ 	}
+ 
++	//#region Composery narrow-viewport editor groups
++
++	// A narrow viewport gets exactly one editor group. addGroup() above keeps a split from
++	// being created; this is the other half - a group that arrives without going through it
++	// (a grid restored from a session on a wide screen, a copied group, a window dragged
++	// narrower) is merged into the active one, so its editors stay reachable as tabs rather
++	// than sitting in a pane too narrow to read. Both halves read the width of the window the
++	// part is in, not mainWindow, so an auxiliary editor window is judged on its own.
++	//
++	// Merging mutates the grid, so it cannot run inside the layout pass that noticed it. A
++	// microtask runs at top level but still before the browser paints, so the split is never
++	// shown, and one microtask coalesces the burst of layouts a resize produces.
++	private narrowGroupsScheduled = false;
++
++	private get hasSplitNarrowGroups(): boolean {
++		return this.count > 1 && isNarrow(getWindow(this.element));
++	}
++
++	private scheduleNarrowGroups(): void {
++		if (this.narrowGroupsScheduled || !this.hasSplitNarrowGroups) {
++			return;
++		}
++
++		this.narrowGroupsScheduled = true;
++		queueMicrotask(() => {
++			this.narrowGroupsScheduled = false;
++
++			// Re-read rather than trust the condition that scheduled us: the group
++			// may already be gone, the window may be wide again, and a disposed
++			// part (an auxiliary window that closed) has no groups left to merge.
++			if (this.hasSplitNarrowGroups) {
++				this.mergeAllGroups(this.activeGroup);
++			}
++		});
++	}
++
++	//#endregion
++
+ 	protected override saveState(): void {
+ 
+ 		// Persist grid UI state
+--- a/lib/vscode/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
++++ b/lib/vscode/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
+@@ -76,9 +76,20 @@
+ 	order: 0;
+ 	width: 20%;
+ 	flex-grow: 2;
++	/* Composery: allow the left flex item to shrink below the menubar's intrinsic width. The
++	 * menubar can then measure its real allocation and move labels into its overflow menu instead
++	 * of pushing the centered and trailing titlebar contents off-screen. */
++	min-width: 0;
+ 	justify-content: flex-start;
+ }
+ 
++/* Composery: flex the menubar from zero so its border-box width is the space left after fixed
++ * titlebar-left controls. MenuBar uses that width to decide which labels move into overflow. */
++.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .menubar:not(.compact) {
++	flex: 1 1 0;
++	min-width: 0;
++}
++
+ .monaco-workbench .part.titlebar > .titlebar-container.has-center > .titlebar-center {
+ 	order: 1;
+ 	width: 60%;
+--- a/lib/vscode/src/vs/workbench/browser/workbench.ts
++++ b/lib/vscode/src/vs/workbench/browser/workbench.ts
+@@ -50,6 +50,7 @@ import { AccessibleViewRegistry } from '../../platform/accessibility/browser/acce
+ import { NotificationAccessibleView } from './parts/notifications/notificationAccessibleView.js';
+ import { IMarkdownRendererService } from '../../platform/markdown/browser/markdownRenderer.js';
+ import { EditorMarkdownCodeBlockRenderer } from '../../editor/browser/widget/markdownRenderer/browser/editorMarkdownCodeBlockRenderer.js';
++import { installNarrowActivityBarLocation } from './narrowActivityBar.js';
+ 
+ export interface IWorkbenchOptions {
+ 
+@@ -155,6 +156,12 @@ export class Workbench extends Layout {
+ 				setHoverDelegateFactory((placement, enableInstantHover) => instantiationService.createInstance(WorkbenchHoverDelegate, placement, { instantHover: enableInstantHover }, {}));
+ 				setBaseLayerHoverDelegate(hoverService);
+ 
++				// Composery: mirror the narrow-viewport activity bar location onto the setting the
++				// workbench reads, before initLayout seeds its state from that setting and subscribes
++				// to it. See narrowActivityBar.ts - any later and the first mirror runs a layout
++				// listener that dereferences a grid createWorkbenchLayout has not built yet.
++				this._register(installNarrowActivityBarLocation(configurationService));
++
+ 				// Layout
+ 				this.initLayout(accessor);
+ 
+--- a/lib/vscode/src/vs/workbench/common/editor.ts
++++ b/lib/vscode/src/vs/workbench/common/editor.ts
+@@ -1186,7 +1186,14 @@ export interface IEditorWillMoveEvent extends IEditorIdentifier {
+ 	readonly target: GroupIdentifier;
+ }
+ 
+-export interface IEditorWillOpenEvent extends IEditorIdentifier { }
++export interface IEditorWillOpenEvent extends IEditorIdentifier {
++
++	/**
++	 * Composery: the options the editor is opening with, so a listener can tell an open
++	 * the user is asking to look at from one that happens in the background.
++	 */
++	readonly options?: IEditorOptions;
++}
+ 
+ export interface IWillInstantiateEditorPaneEvent {
+ 
+--- a/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionFeaturesTab.ts
++++ b/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionFeaturesTab.ts
+@@ -6,6 +6,7 @@
+ import { Disposable, DisposableStore, IDisposable, MutableDisposable } from '../../../../base/common/lifecycle.js';
+ import { $, append, clearNode, addDisposableListener, EventType } from '../../../../base/browser/dom.js';
+ import { Emitter, Event } from '../../../../base/common/event.js';
++import { ScrollbarVisibility } from '../../../../base/common/scrollable.js';
+ import { ExtensionIdentifier, IExtensionManifest } from '../../../../platform/extensions/common/extensions.js';
+ import { Orientation, Sizing, SplitView } from '../../../../base/browser/ui/splitview/splitview.js';
+ import { IExtensionFeatureDescriptor, Extensions, IExtensionFeaturesRegistry, IExtensionFeatureRenderer, IExtensionFeaturesManagementService, IExtensionFeatureTableRenderer, IExtensionFeatureMarkdownRenderer, ITableData, IRenderedData, IExtensionFeatureMarkdownAndTableRenderer } from '../../../services/extensionManagement/common/extensionFeatures.js';
+@@ -353,14 +354,29 @@ export class ExtensionFeaturesTab extends Themable {
+ 			return;
+ 		}
+ 
++		// Composery: a native selector replaces the desktop split list on phones,
++		// leaving the contribution itself the full viewport width.
++		const featurePicker = append(this.domNode, $('select.composery-feature-picker')) as HTMLSelectElement;
++		featurePicker.ariaLabel = localize('extensionFeaturePicker', "Extension feature");
++		for (const feature of features) {
++			featurePicker.add(new Option(feature.label));
++		}
++
+ 		const splitView = this._register(new SplitView<number>(this.domNode, {
+ 			orientation: Orientation.HORIZONTAL,
+ 			proportionalLayout: true
+ 		}));
++		let wasNarrow: boolean | undefined;
+ 		this.layoutParticipants.push({
+ 			layout: (height: number, width: number) => {
+-				splitView.el.style.height = `${height - 14}px`;
++				const isNarrow = width < 600;
++				featurePicker.classList.toggle('visible', isNarrow);
++				splitView.el.style.height = `${height - 14 - (isNarrow ? 44 : 0)}px`;
+ 				splitView.layout(width);
++				if (isNarrow !== wasNarrow) {
++					splitView.resizeView(0, isNarrow ? 0 : 200);
++					wasNarrow = isNarrow;
++				}
+ 			}
+ 		});
+ 
+@@ -373,16 +389,21 @@ export class ExtensionFeaturesTab extends Themable {
+ 			const feature = e.elements[0];
+ 			if (feature) {
+ 				this.showFeatureView(feature, featureViewContainer);
++				featurePicker.selectedIndex = features.indexOf(feature);
+ 			}
+ 		}));
+ 
+ 		const index = this.feature ? features.findIndex(f => f.id === this.feature) : 0;
+ 		list.setSelection([index === -1 ? 0 : index]);
+ 
++		this._register(addDisposableListener(featurePicker, EventType.CHANGE, () => {
++			list.setSelection([featurePicker.selectedIndex]);
++		}));
++
+ 		splitView.addView({
+ 			onDidChange: Event.None,
+ 			element: featuresListContainer,
+-			minimumSize: 100,
++			minimumSize: 0,
+ 			maximumSize: Number.POSITIVE_INFINITY,
+ 			layout: (width, _, height) => {
+ 				featuresListContainer.style.width = `${width}px`;
+@@ -393,7 +414,9 @@ export class ExtensionFeaturesTab extends Themable {
+ 		splitView.addView({
+ 			onDidChange: Event.None,
+ 			element: featureViewContainer,
+-			minimumSize: 500,
++			// Composery: the phone selector collapses the list pane so this view can
++			// use the full viewport; the lower minimum also avoids resize overflow.
++			minimumSize: 240,
+ 			maximumSize: Number.POSITIVE_INFINITY,
+ 			layout: (width, _, height) => {
+ 				featureViewContainer.style.width = `${width}px`;
+@@ -587,7 +610,10 @@ class ExtensionFeatureView extends Disposable {
+ 		const body = append(content, $('.feature-body'));
+ 
+ 		const bodyContent = $('.feature-body-content');
+-		const scrollableContent = this._register(new DomScrollableElement(bodyContent, {}));
++		// Composery: feature tables can exceed a phone viewport. Keep every column
++		// reachable through the workbench's touch-aware horizontal scroller.
++		const scrollableContent = this._register(new DomScrollableElement(bodyContent,
++			{ horizontal: ScrollbarVisibility.Auto }));
+ 		append(body, scrollableContent.getDomNode());
+ 		this.layoutParticipants.push({ layout: () => scrollableContent.scanDomNode() });
+ 		scrollableContent.scanDomNode();
+--- a/lib/vscode/src/vs/workbench/services/editor/common/editorGroupColumn.ts
++++ b/lib/vscode/src/vs/workbench/services/editor/common/editorGroupColumn.ts
+@@ -29,6 +29,14 @@ export function columnToEditorGroup(editorGroupService: IEditorGroupsService, co
+ 		for (let i = 0; i <= column; i++) {
+ 			const editorGroups = editorGroupService.getGroups(GroupsOrder.GRID_APPEARANCE);
+ 			if (!editorGroups[i]) {
++				// Composery: the loop assumed its own side effect - that the previous pass
++				// created column i - 1 - and threw on `undefined` the moment one did not
++				// appear. A narrow viewport is a standing refusal to add groups (editorPart's
++				// addGroup), so give up on the column instead and let the caller fall back
++				// to SIDE_GROUP below, which resolves to the one group there is.
++				if (!editorGroups[i - 1]) {
++					break;
++				}
+ 				editorGroupService.addGroup(editorGroups[i - 1], preferredSideBySideGroupDirection(configurationService));
+ 			}
+ 		}
+--- a/lib/vscode/src/vs/workbench/services/configuration/browser/configurationService.ts
++++ b/lib/vscode/src/vs/workbench/services/configuration/browser/configurationService.ts
+@@ -46,6 +46,8 @@ import { IJSONEditingService } from '../common/jsonEditing.js';
+ import { IBrowserWorkbenchEnvironmentService } from '../../environment/browser/environmentService.js';
+ import { workbenchConfigurationNodeBase } from '../../../common/configuration.js';
+ import { mainWindow } from '../../../../base/browser/window.js';
++import { activityBarLocationKey } from '../../../browser/narrowActivityBar.js';
++import { LayoutSettings } from '../../layout/browser/layoutService.js';
+ import { runWhenWindowIdle } from '../../../../base/browser/dom.js';
+ import { renderAsPlaintext } from '../../../../base/browser/markdownRenderer.js';
+ import { fixSettingLinks } from '../../preferences/common/preferencesModels.js';
+@@ -343,6 +344,16 @@ export class WorkspaceService extends Disposable implements IWorkbenchConfigurat
+ 		const target: ConfigurationTarget | undefined = (overrides ? arg4 : arg3) as ConfigurationTarget | undefined;
+ 		const targets: ConfigurationTarget[] = target ? [target] : [];
+ 
++		// Composery: on a narrow viewport the activity bar location is its own setting, so every
++		// write of the upstream key - the "Move Activity Bar to ..." actions, the settings editor,
++		// an extension - lands there instead and leaves the wide setting alone. Off a narrow
++		// viewport activityBarLocationKey hands back the key it was given, so this is a no-op.
++		// MEMORY is how narrowActivityBar.ts mirrors the narrow value back onto the upstream key
++		// for the readers, and is the one write that must not be redirected into itself.
++		if (key === LayoutSettings.ACTIVITY_BAR_LOCATION && target !== ConfigurationTarget.MEMORY) {
++			key = activityBarLocationKey();
++		}
++
+ 		if (overrides?.overrideIdentifiers) {
+ 			overrides.overrideIdentifiers = distinct(overrides.overrideIdentifiers);
+ 			overrides.overrideIdentifiers = overrides.overrideIdentifiers.length ? overrides.overrideIdentifiers : undefined;
+--- a/lib/vscode/src/vs/workbench/services/layout/browser/layoutService.ts
++++ b/lib/vscode/src/vs/workbench/services/layout/browser/layoutService.ts
+@@ -43,6 +43,8 @@ export const enum ZenModeSettings {
+ 
+ export const enum LayoutSettings {
+ 	ACTIVITY_BAR_LOCATION = 'workbench.activityBar.location',
++	// Composery: the narrow-viewport counterpart of ACTIVITY_BAR_LOCATION, owned by narrowActivityBar.ts.
++	NARROW_ACTIVITY_BAR_LOCATION = 'composery.activityBar.narrowLocation',
+ 	ACTIVITY_BAR_AUTO_HIDE = 'workbench.activityBar.autoHide',
+ 	ACTIVITY_BAR_COMPACT = 'workbench.activityBar.compact',
+ 	EDITOR_TABS_MODE = 'workbench.editor.showTabs',
+--- a/lib/vscode/src/vs/workbench/browser/parts/sidebar/sidebarPart.ts
++++ b/lib/vscode/src/vs/workbench/browser/parts/sidebar/sidebarPart.ts
+@@ -6,6 +6,7 @@
+ import './media/sidebarpart.css';
+ import './sidebarActions.js';
+ import { ActivityBarPosition, IWorkbenchLayoutService, LayoutSettings, Parts, Position as SideBarPosition } from '../../../services/layout/browser/layoutService.js';
++import { activityBarLocationDefault, activityBarLocationKey } from '../../narrowActivityBar.js';
+ import { SidebarFocusContext, ActiveViewletContext } from '../../../common/contextkeys.js';
+ import { IStorageService, StorageScope, StorageTarget } from '../../../../platform/storage/common/storage.js';
+ import { IContextMenuService } from '../../../../platform/contextview/browser/contextView.js';
+@@ -275,16 +276,22 @@ export class SidebarPart extends AbstractPaneCompositePart {
+ 	private rememberActivityBarVisiblePosition(): void {
+ 		const activityBarPosition = this.configurationService.getValue<string>(LayoutSettings.ACTIVITY_BAR_LOCATION);
+ 		if (activityBarPosition !== ActivityBarPosition.HIDDEN) {
+-			this.storageService.store(LayoutSettings.ACTIVITY_BAR_LOCATION, activityBarPosition, StorageScope.PROFILE, StorageTarget.USER);
++			// Composery: the two viewports remember their own last visible position, because one
++			// client is both over its lifetime - a phone rotated into landscape, a desktop window
++			// dragged narrow. A single key would restore the wide position into the narrow setting
++			// on the next unhide, which is the one thing splitting the settings is for.
++			this.storageService.store(activityBarLocationKey(), activityBarPosition, StorageScope.PROFILE, StorageTarget.USER);
+ 		}
+ 	}
+ 
+ 	private getRememberedActivityBarVisiblePosition(): ActivityBarPosition {
+-		const activityBarPosition = this.storageService.get(LayoutSettings.ACTIVITY_BAR_LOCATION, StorageScope.PROFILE);
++		const activityBarPosition = this.storageService.get(activityBarLocationKey(), StorageScope.PROFILE);
+ 		switch (activityBarPosition) {
+ 			case ActivityBarPosition.TOP: return ActivityBarPosition.TOP;
+ 			case ActivityBarPosition.BOTTOM: return ActivityBarPosition.BOTTOM;
+-			default: return ActivityBarPosition.DEFAULT;
++			// Composery: with nothing remembered, unhiding lands on the governing setting's own
++			// default - on a narrow viewport that is not `default`.
++			default: return activityBarLocationDefault();
+ 		}
+ 	}
+ 
+--- a/lib/vscode/src/vs/workbench/contrib/webview/browser/pre/index.html
++++ b/lib/vscode/src/vs/workbench/contrib/webview/browser/pre/index.html
+@@ -5,7 +5,7 @@
+ 	<meta charset="UTF-8">
+ 
+ 	<meta http-equiv="Content-Security-Policy"
+-		content="default-src 'none'; script-src 'sha256-A6/szVNdTzyi4hDa+9OLbzS8tSd2iUV4CqimLNWex2Y=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
++		content="default-src 'none'; script-src 'sha256-DK8IYscPwU1YYkFAEiG8aBDHYfkZXeFsG/Odp3sfsDw=' 'self'; frame-src 'self'; style-src 'unsafe-inline';">
+ 
+ 	<!-- Disable pinch zooming -->
+ 	<meta name="viewport"
+@@ -117,6 +117,19 @@
+ 				padding: 0 20px;
+ 			}
+ 
++			@media (max-width: 768px) {
++				body {
++					box-sizing: border-box;
++					max-width: 100%;
++					-webkit-text-size-adjust: 100%;
++					text-size-adjust: 100%;
++				}
++
++				input, textarea, select {
++					font-size: max(16px, 1em);
++				}
++			}
++
+ 			img, video {
+ 				max-width: 100%;
+ 				max-height: 100%;

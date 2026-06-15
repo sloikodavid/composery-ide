@@ -1,0 +1,36 @@
+Keep a scrolled-up terminal viewport where the user left it across a resize.
+
+xterm's Buffer#resize advances ydisp once per row it drops off the top,
+wherever the viewport happened to be. That is right while the viewport follows
+the bottom - the cursor has to stay visible, so the content moves up by exactly
+the height that was taken away - and wrong once the user has scrolled up to
+read, where it drags the text out from under them by that same height. Nothing
+puts it back, so this does.
+
+A soft keyboard shrinking the panel is the cheapest way to see it and a sash
+drag does it on desktop just as well, so this is not gated on the touch
+capability. Columns are not part of it: Buffer#_reflow returns immediately
+unless the column count changed.
+
+An upstream defect, kept individually deletable: delete this patch the day
+xterm anchors the viewport itself.
+
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/xterm/xtermTerminal.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/xterm/xtermTerminal.ts
+@@ -13,6 +13,7 @@ import type { ImageAddon as ImageAddonType } from '@xterm/addon-image';
+ import type { ClipboardAddon as ClipboardAddonType } from '@xterm/addon-clipboard';
+ import * as dom from '../../../../../base/browser/dom.js';
+ import { IXtermCore } from '../xterm-private.js';
++import { resize as resizeTerminal } from '../xtermResize.js';
+ import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
+ import { Disposable, DisposableStore, MutableDisposable } from '../../../../../base/common/lifecycle.js';
+ import { IEditorOptions } from '../../../../../editor/common/config/editorOptions.js';
+@@ -541,7 +542,7 @@ export class XtermTerminal extends Disposable implements IXtermTerminal, IDetach
+ 
+ 	resize(columns: number, rows: number): void {
+ 		this._logService.debug('resizing', columns, rows);
+-		this.raw.resize(columns, rows);
++		resizeTerminal(this.raw, columns, rows);
+ 	}
+ 
+ 	updateLogLevel(): void {

@@ -1,0 +1,1024 @@
+Composery sign-in, end to end.
+
+Password lifecycle: first boot has no password - register (or the cloud
+authorize flow) creates it, change-password changes it, and the server treats
+the no-password state as unauthenticated instead of refusing to start. login
+renders through the shared auth shell (renderAuthPage) with redirect-style
+errors; env passwords stay mutually exclusive; the generated-password default
+config is gone (register owns creation). Deletes upstream's standalone
+login/error pages - the overlay auth shell replaces them (error.html and
+global.css are re-provided by the overlay).
+
+Checking a password collapses to one overlay function. Upstream carried a
+PasswordMethod dispatch (legacy SHA-256, a cookie-validation twin, and an
+argon2 hash computed on every attempt whose only consumer was the cookie this
+stack no longer sets) for a product with no legacy passwords to support. What
+survives is `isPasswordValid(args, password)`. Because argon2 is now the only
+format, a hashed-password in any other shape stops the IDE at start: nothing
+could ever match it, so accepting it means looking configured while refusing
+every sign-in.
+
+/login and the current-password step of /change-password answer the same
+question, so they share one per-source budget rather than each holding a
+limiter that the other is a way around.
+
+Workbench commands: Sign Out and Change Password are registered when the
+matching endpoint is in product.json, both routed through openAuthEndpoint,
+which suppresses beforeunload for the deliberate navigation. The endpoints
+resolve against window.top so they work embedded. Whether change-password
+exists at all is one predicate (isEnvPasswordManaged) shared by the command,
+the route guard and the link on the sign-in page - a cloud instance's own
+COMPOSERY_HASHED_PASSWORD is not "the environment owns this", because the
+change is recorded with the website first and reconciled back into it.
+
+COMPOSERY_DISABLE_AUTH turns sign-in off for deployments with their own gate
+in front (a private network, an SSO proxy, a throwaway local instance). Upstream
+carries AuthType.None end to end - authenticated() short-circuits, so the
+workbench, both proxies and every websocket open together, and the sign-in
+commands drop out with the endpoints behind them. Only an explicit 1/true
+disables: every other value, typos included, fails towards keeping sign-in.
+The boot line becomes a warning that names the real exposure - a cloud instance
+sits on the public internet where a self-hosted one may be loopback-only -
+and a configured-but-ignored password says so.
+
+--- a/lib/vscode/src/vs/base/common/product.ts
++++ b/lib/vscode/src/vs/base/common/product.ts
+@@ -88,6 +88,7 @@ export interface IProductConfiguration {
+ 	readonly rootEndpoint?: string
+ 	readonly updateEndpoint?: string
+ 	readonly logoutEndpoint?: string
++	readonly changePasswordEndpoint?: string
+ 	readonly proxyEndpointTemplate?: string
+ 	readonly serviceWorker?: {
+ 		readonly path: string;
+--- a/lib/vscode/src/vs/server/node/serverEnvironmentService.ts
++++ b/lib/vscode/src/vs/server/node/serverEnvironmentService.ts
+@@ -19,6 +19,7 @@ export const serverOptions: OptionDescriptions<Required<ServerParsedArgs>> = {
+ 	/* ----- code-server ----- */
+ 	'disable-update-check': { type: 'boolean' },
+ 	'auth': { type: 'string' },
++	'change-password': { type: 'boolean' },
+ 	'disable-file-downloads': { type: 'boolean' },
+ 	'disable-file-uploads': { type: 'boolean' },
+ 	'disable-getting-started-override': { type: 'boolean' },
+@@ -120,6 +121,7 @@ export interface ServerParsedArgs {
+ 	/* ----- code-server ----- */
+ 	'disable-update-check'?: boolean;
+ 	'auth'?: string;
++	'change-password'?: boolean;
+ 	'disable-file-downloads'?: boolean;
+ 	'disable-file-uploads'?: boolean;
+ 	'disable-getting-started-override'?: boolean,
+--- a/lib/vscode/src/vs/server/node/webClientServer.ts
++++ b/lib/vscode/src/vs/server/node/webClientServer.ts
+@@ -374,6 +374,7 @@ export class WebClientServer {
+ 			rootEndpoint: rootBase,
+ 			updateEndpoint: !this._environmentService.args['disable-update-check'] ? rootBase + '/update/check' : undefined,
+ 			logoutEndpoint: this._environmentService.args['auth'] && this._environmentService.args['auth'] !== "none" ? rootBase + '/logout' : undefined,
++			changePasswordEndpoint: this._environmentService.args['change-password'] ? rootBase + '/change-password' : undefined,
+ 			proxyEndpointTemplate: process.env.VSCODE_PROXY_URI ?? rootBase + '/proxy/{{port}}/',
+ 			serviceWorker: {
+ 				scope: vscodeBase + '/',
+--- a/lib/vscode/src/vs/workbench/browser/client.ts
++++ b/lib/vscode/src/vs/workbench/browser/client.ts
+@@ -9,6 +9,7 @@ import { IStorageService, StorageScope, StorageTarget } from '../../platform/sto
+ 
+ export class CodeServerClient extends Disposable {
+ 	static LOGOUT_COMMAND_ID = 'code-server.logout';
++	static CHANGE_PASSWORD_COMMAND_ID = 'composery.changePassword';
+ 
+ 	constructor (
+ 		@ILogService private logService: ILogService,
+@@ -90,6 +91,10 @@ export class CodeServerClient extends Disposable {
+ 			this.addLogoutCommand(this.productService.logoutEndpoint);
+ 		}
+ 
++		if (this.productService.changePasswordEndpoint) {
++			this.addChangePasswordCommand(this.productService.changePasswordEndpoint);
++		}
++
+ 		if (this.productService.serviceWorker) {
+ 			await this.registerServiceWorker(this.productService.serviceWorker);
+ 		}
+@@ -145,23 +150,45 @@ export class CodeServerClient extends Disposable {
+ 		updateLoop();
+ 	}
+ 
++	private openAuthEndpoint(endpoint: string) {
++		const targetWindow = window.top || window;
++		const authUrl = new URL(endpoint, targetWindow.location.href);
++		const skipBeforeUnload = (event: BeforeUnloadEvent) => event.stopImmediatePropagation();
++		window.addEventListener('beforeunload', skipBeforeUnload, { capture: true });
++		targetWindow.addEventListener('beforeunload', skipBeforeUnload, { capture: true });
++		window.setTimeout(() => window.removeEventListener('beforeunload', skipBeforeUnload, true), 10000);
++		targetWindow.setTimeout(() => targetWindow.removeEventListener('beforeunload', skipBeforeUnload, true), 10000);
++		targetWindow.location.assign(authUrl);
++	}
++
++	private addChangePasswordCommand(changePasswordEndpoint: string) {
++		CommandsRegistry.registerCommand(CodeServerClient.CHANGE_PASSWORD_COMMAND_ID, () => {
++			this.openAuthEndpoint(changePasswordEndpoint);
++		});
++
++		for (const menuId of [MenuId.CommandPalette, MenuId.MenubarHomeMenu]) {
++			MenuRegistry.appendMenuItem(menuId, {
++				command: {
++					id: CodeServerClient.CHANGE_PASSWORD_COMMAND_ID,
++					title: localize('changePassword', "Change Password"),
++				},
++				order: menuId === MenuId.MenubarHomeMenu ? 1 : undefined,
++			});
++		}
++	}
++
+ 	private addLogoutCommand(logoutEndpoint: string) {
+ 		CommandsRegistry.registerCommand(CodeServerClient.LOGOUT_COMMAND_ID, () => {
+-			const logoutUrl = new URL(logoutEndpoint, window.location.href);
+-			// Cookies must be set with absolute paths and must use the same path to
+-			// be unset (we set it on the root) so send the relative root and the
+-			// current href so the backend can derive the absolute path to the root.
+-			logoutUrl.searchParams.set('base', this.productService.rootEndpoint || ".");
+-			logoutUrl.searchParams.set('href', window.location.href);
+-			window.location.assign(logoutUrl);
++			this.openAuthEndpoint(logoutEndpoint);
+ 		});
+ 
+ 		for (const menuId of [MenuId.CommandPalette, MenuId.MenubarHomeMenu]) {
+ 			MenuRegistry.appendMenuItem(menuId, {
+ 				command: {
+ 					id: CodeServerClient.LOGOUT_COMMAND_ID,
+-					title: localize('logout', "Sign out of {0}", 'code-server'),
++					title: localize('logout', "Sign Out"),
+ 				},
++				order: menuId === MenuId.MenubarHomeMenu ? 2 : undefined,
+ 			});
+ 		}
+ 	}
+--- a/src/browser/pages/error.css
++++ /dev/null
+@@ -1,33 +0,0 @@
+-.error-display {
+-  box-sizing: border-box;
+-  padding: 20px;
+-  text-align: center;
+-}
+-
+-.error-display > .header {
+-  font-size: 6rem;
+-  margin: 0;
+-}
+-
+-.error-display > .body {
+-  color: #444;
+-  color: light-dark(#444, #ccc);
+-  font-size: 1.2rem;
+-}
+-
+-.error-display > .links {
+-  margin-top: 16px;
+-}
+-
+-.error-display > .links > .link {
+-  color: rgb(87, 114, 245);
+-  text-decoration: none;
+-}
+-
+-.error-display > .links > .link:hover {
+-  text-decoration: underline;
+-}
+-
+-.error-display .success {
+-  color: green;
+-}
+--- a/src/browser/pages/error.html
++++ /dev/null
+@@ -1,35 +0,0 @@
+-<!doctype html>
+-<html lang="en">
+-  <head>
+-    <meta charset="utf-8" />
+-    <meta
+-      name="viewport"
+-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no"
+-    />
+-    <meta
+-      http-equiv="Content-Security-Policy"
+-      content="style-src 'self'; manifest-src 'self'; img-src 'self' data:; font-src 'self' data:;"
+-    />
+-    <meta name="color-scheme" content="light dark" />
+-    <title>{{ERROR_TITLE}} - {{APP_NAME}}</title>
+-    <link rel="icon" href="{{CS_STATIC_BASE}}/src/browser/media/favicon-dark-support.svg" />
+-    <link rel="alternate icon" href="{{CS_STATIC_BASE}}/src/browser/media/favicon.ico" />
+-    <link rel="manifest" href="/manifest.json" crossorigin="use-credentials" />
+-    <link rel="apple-touch-icon" sizes="192x192" href="{{CS_STATIC_BASE}}/src/browser/media/pwa-icon-192.png" />
+-    <link rel="apple-touch-icon" sizes="512x512" href="{{CS_STATIC_BASE}}/src/browser/media/pwa-icon-512.png" />
+-    <link href="{{CS_STATIC_BASE}}/src/browser/pages/global.css" rel="stylesheet" />
+-    <link href="{{CS_STATIC_BASE}}/src/browser/pages/error.css" rel="stylesheet" />
+-    <meta id="coder-options" data-settings="{{OPTIONS}}" />
+-  </head>
+-  <body>
+-    <div class="center-container">
+-      <div class="error-display">
+-        <h2 class="header">{{ERROR_HEADER}}</h2>
+-        <div class="body">{{ERROR_BODY}}</div>
+-        <div class="links">
+-          <a class="link" href="{{BASE}}{{TO}}">go home</a>
+-        </div>
+-      </div>
+-    </div>
+-  </body>
+-</html>
+--- a/src/browser/pages/global.css
++++ /dev/null
+@@ -1,101 +0,0 @@
+-:root {
+-  color-scheme: light dark;
+-}
+-
+-html,
+-body,
+-#root {
+-  height: 100%;
+-  width: 100%;
+-}
+-
+-body {
+-  background: rgb(244, 247, 252);
+-  background: light-dark(rgb(244, 247, 252), #111827);
+-  color: #111;
+-  color: light-dark(#111, #ddd);
+-  margin: 0;
+-  font-family:
+-    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji",
+-    "Segoe UI Emoji", "Segoe UI Symbol";
+-  overflow: hidden;
+-}
+-
+-input,
+-button {
+-  font-family: inherit;
+-  font-size: 1rem;
+-  line-height: 1rem;
+-}
+-
+-.-button {
+-  background-color: rgb(87, 114, 245);
+-  background-color: light-dark(rgb(87, 114, 245), rgb(26, 86, 219));
+-  border-radius: 5px;
+-  border: none;
+-  box-sizing: border-box;
+-  color: white;
+-  color: light-dark(white, white);
+-  cursor: pointer;
+-  padding: 18px 20px;
+-  font-weight: 500;
+-  text-decoration: none;
+-}
+-
+-.center-container {
+-  align-items: center;
+-  box-sizing: border-box;
+-  display: flex;
+-  flex-direction: column;
+-  justify-content: center;
+-  min-height: 100%;
+-  padding: 20px;
+-  width: 100%;
+-}
+-
+-.card-box {
+-  background-color: rgb(250, 253, 258);
+-  background-color: light-dark(rgb(250, 253, 258), #1f2937);
+-  border-radius: 5px;
+-  box-shadow:
+-    light-dark(rgba(60, 66, 87, 0.117647), rgba(10, 10, 10, 0.617647)) 0px 7px 14px 0px,
+-    rgba(0, 0, 0, 0.117647) 0px 3px 6px 0px;
+-  max-width: 650px;
+-  width: 100%;
+-}
+-
+-.card-box > .header {
+-  border-bottom: 1px solid #ddd;
+-  border-bottom: 1px solid light-dark(#ddd, #111827);
+-  color: #444;
+-  color: light-dark(#444, #fff);
+-  padding: 30px;
+-}
+-
+-.card-box > .header > .main {
+-  margin: 0;
+-  font-size: 1.5rem;
+-}
+-
+-.card-box > .header > .sub {
+-  color: #555;
+-  color: light-dark(#555, #9ca3af);
+-  margin-top: 10px;
+-}
+-
+-.card-box > .content {
+-  padding: 40px;
+-}
+-
+-.card-box > .content > .none {
+-  margin: 2px 0;
+-}
+-
+-.card-box + .card-box {
+-  margin-top: 26px;
+-}
+-
+-canvas {
+-  top: 0;
+-  left: 0;
+-}
+--- a/src/browser/pages/login.css
++++ /dev/null
+@@ -1,67 +0,0 @@
+-body {
+-  min-height: 568px;
+-  min-width: 320px;
+-  overflow: auto;
+-}
+-
+-.login-form {
+-  display: flex;
+-  flex-direction: column;
+-  flex: 1;
+-  justify-content: center;
+-}
+-
+-.login-form > .field {
+-  display: flex;
+-  flex-direction: row;
+-  width: 100%;
+-}
+-
+-@media (max-width: 600px) {
+-  .login-form > .field {
+-    flex-direction: column;
+-  }
+-}
+-
+-.login-form > .error {
+-  color: red;
+-  margin-top: 16px;
+-}
+-
+-.login-form > .field > .password {
+-  background-color: rgb(244, 247, 252);
+-  background-color: light-dark(rgb(244, 247, 252), #374151);
+-  border-radius: 5px;
+-  border: 1px solid #ddd;
+-  border: 1px solid light-dark(#ddd, #4b5563);
+-  box-sizing: border-box;
+-  flex: 1;
+-  padding: 16px;
+-}
+-
+-.login-form > .field > .password::placeholder {
+-  color: rgb(148 163 184);
+-}
+-
+-.login-form > .field > .password:focus {
+-  outline: 2px solid rgb(63, 131, 248);
+-}
+-
+-.login-form > .user {
+-  display: none;
+-}
+-
+-.login-form > .field > .submit {
+-  margin-left: 20px;
+-}
+-
+-@media (max-width: 600px) {
+-  .login-form > .field > .submit {
+-    margin-left: 0px;
+-    margin-top: 16px;
+-  }
+-}
+-
+-input {
+-  -webkit-appearance: none;
+-}
+--- a/src/browser/pages/login.html
++++ /dev/null
+@@ -1,62 +0,0 @@
+-<!doctype html>
+-<html lang="en">
+-  <head>
+-    <meta charset="utf-8" />
+-    <meta
+-      name="viewport"
+-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no"
+-    />
+-    <meta
+-      http-equiv="Content-Security-Policy"
+-      content="style-src 'self'; script-src 'self' 'unsafe-inline'; manifest-src 'self'; img-src 'self' data:; font-src 'self' data:;"
+-    />
+-    <meta name="color-scheme" content="light dark" />
+-    <title>{{I18N_LOGIN_TITLE}}</title>
+-    <link rel="icon" href="{{CS_STATIC_BASE}}/src/browser/media/favicon-dark-support.svg" />
+-    <link rel="alternate icon" href="{{CS_STATIC_BASE}}/src/browser/media/favicon.ico" />
+-    <link rel="manifest" href="{{BASE}}/manifest.json" crossorigin="use-credentials" />
+-    <link rel="apple-touch-icon" sizes="192x192" href="{{CS_STATIC_BASE}}/src/browser/media/pwa-icon-192.png" />
+-    <link rel="apple-touch-icon" sizes="512x512" href="{{CS_STATIC_BASE}}/src/browser/media/pwa-icon-512.png" />
+-    <link href="{{CS_STATIC_BASE}}/src/browser/pages/global.css" rel="stylesheet" />
+-    <link href="{{CS_STATIC_BASE}}/src/browser/pages/login.css" rel="stylesheet" />
+-    <meta id="coder-options" data-settings="{{OPTIONS}}" />
+-  </head>
+-  <body>
+-    <div class="center-container">
+-      <div class="card-box">
+-        <div class="header">
+-          <h1 class="main">{{WELCOME_TEXT}}</h1>
+-          <div class="sub">{{I18N_LOGIN_BELOW}} {{PASSWORD_MSG}}</div>
+-        </div>
+-        <div class="content">
+-          <form class="login-form" method="post">
+-            <input class="user" type="text" autocomplete="username" />
+-            <input id="base" type="hidden" name="base" value="{{BASE}}" />
+-            <input id="href" type="hidden" name="href" value="" />
+-            <div class="field">
+-              <input
+-                required
+-                autofocus
+-                class="password"
+-                type="password"
+-                placeholder="{{I18N_PASSWORD_PLACEHOLDER}}"
+-                name="password"
+-                autocomplete="current-password"
+-              />
+-              <input class="submit -button" value="{{I18N_SUBMIT}}" type="submit" />
+-            </div>
+-            {{ERROR}}
+-          </form>
+-        </div>
+-      </div>
+-    </div>
+-    <script>
+-      // Inform the backend about the path since the proxy might have rewritten
+-      // it out of the headers and cookies must be set with absolute paths.
+-      const el = document.getElementById("href")
+-      if (el) {
+-        el.value = location.href
+-      }
+-    </script>
+-  </body>
+-</html>
+--- a/src/node/cli.ts
++++ b/src/node/cli.ts
+@@ -3,7 +3,8 @@ import { promises as fs } from "fs"
+ import { load } from "js-yaml"
+ import * as path from "path"
+ import { envFlag } from "./envFlag"
+-import { generateCertificate, generatePassword, paths, splitOnFirstEquals } from "./util"
++import { isEnvPasswordManaged } from "./routes/passwordConfig"
++import { generateCertificate, paths, splitOnFirstEquals } from "./util"
+ import { EditorSessionManagerClient } from "./vscodeSocket"
+ 
+ export enum Feature {
+@@ -58,6 +59,7 @@ export interface UserProvidedCodeArgs {
+   "link-protection-trusted-domains"?: string[]
+   // locale is used by both VS Code and code-server.
+   locale?: string
++  "change-password"?: boolean
+ }
+ 
+ /**
+@@ -93,7 +95,6 @@ export interface UserProvidedArgs extends UserProvidedCodeArgs {
+   "ignore-last-opened"?: boolean
+   verbose?: boolean
+   "app-name"?: string
+-  "welcome-text"?: string
+   "abs-proxy-base-path"?: string
+   i18n?: string
+   "idle-timeout-seconds"?: number
+@@ -174,6 +175,9 @@ export const options: Options<Required<UserProvidedArgs>> = {
+   "session-socket": {
+     type: "string",
+   },
++  "change-password": {
++    type: "boolean",
++  },
+   "cookie-suffix": {
+     type: "string",
+     description:
+@@ -296,13 +300,7 @@ export const options: Options<Required<UserProvidedArgs>> = {
+     type: "string",
+     short: "an",
+     description:
+-      "Will replace the {{app}} placeholder in any strings, which by default includes the title bar and welcome message",
+-  },
+-  "welcome-text": {
+-    type: "string",
+-    short: "w",
+-    description: "Text to show on login page",
+-    deprecated: true,
++      "Will replace the {{app}} placeholder in any strings, which by default includes the title bar and login page title",
+   },
+   "abs-proxy-base-path": {
+     type: "string",
+@@ -597,6 +596,14 @@ export async function setDefaults(cliArgs: UserProvidedArgs, configArgs?: Config
+     args.auth = AuthType.Password
+   }
+ 
++  // Overrides the config file, which ships `auth: password`, so the switch
++  // works without editing config. envFlag is the one reading of "set to 1 or
++  // true" in the product: every other value, typos included, has to fail
++  // towards keeping the instance protected.
++  if (envFlag("COMPOSERY_DISABLE_AUTH")) {
++    args.auth = AuthType.None
++  }
++
+   const addr = bindAddrFromAllSources(configArgs || {}, cliArgs)
+   args.host = addr.host
+   args.port = addr.port
+@@ -613,6 +619,7 @@ export async function setDefaults(cliArgs: UserProvidedArgs, configArgs?: Config
+   let usingEnvPassword = !!process.env.PASSWORD
+   if (process.env.PASSWORD) {
+     args.password = process.env.PASSWORD
++    args["hashed-password"] = undefined
+   }
+ 
+   if (envFlag("CS_DISABLE_FILE_DOWNLOADS")) {
+@@ -633,9 +639,19 @@ export async function setDefaults(cliArgs: UserProvidedArgs, configArgs?: Config
+   const usingEnvHashedPassword = !!process.env.HASHED_PASSWORD
+   if (process.env.HASHED_PASSWORD) {
+     args["hashed-password"] = process.env.HASHED_PASSWORD
++    args.password = undefined
+     usingEnvPassword = false
+   }
+ 
++  // A hash in any other format is not a weaker password, it is no password at
++  // all - nothing can match it and this locks everyone out while looking
++  // configured. Refuse to start instead of failing every sign-in silently.
++  if (args["hashed-password"] && !args["hashed-password"].startsWith("$argon2")) {
++    throw new Error(
++      "hashed-password must be an argon2 hash starting with $argon2; generate one with `echo -n yourpassword | npx argon2-cli -e`.",
++    )
++  }
++
+   if (process.env.CODE_SERVER_COOKIE_SUFFIX) {
+     args["cookie-suffix"] = process.env.CODE_SERVER_COOKIE_SUFFIX
+   }
+@@ -700,18 +716,15 @@ export function getResolvedPathsFromArgs(args: UserProvidedArgs): string[] {
+ /**
+  * Helper function to return the default config file.
+  *
+- * @param {string} password - Password passed in (usually from generatePassword())
+  * @returns The default config file:
+  *
+  * - bind-addr: 127.0.0.1:8080
+  * - auth: password
+- * - password: <password>
+  * - cert: false
+  */
+-export function defaultConfigFile(password: string): string {
++export function defaultConfigFile(): string {
+   return `bind-addr: 127.0.0.1:8080
+ auth: password
+-password: ${password}
+ cert: false
+ `
+ }
+@@ -736,8 +749,7 @@ export async function readConfigFile(configPath?: string): Promise<ConfigArgs> {
+   await fs.mkdir(path.dirname(configPath), { recursive: true })
+ 
+   try {
+-    const generatedPassword = await generatePassword()
+-    await fs.writeFile(configPath, defaultConfigFile(generatedPassword), {
++    await fs.writeFile(configPath, defaultConfigFile(), {
+       flag: "wx", // wx means to fail if the path exists.
+     })
+     logger.info(`Wrote default config file to ${configPath}`)
+@@ -926,5 +938,6 @@ export const toCodeArgs = async (args: DefaultedArgs): Promise<CodeArgs> => {
+     version: !!args.version,
+     port: args.port?.toString(),
+     log: args.log ? [args.log] : undefined,
++    "change-password": args.auth === AuthType.Password && !isEnvPasswordManaged(args),
+   }
+ }
+--- a/src/node/main.ts
++++ b/src/node/main.ts
+@@ -133,12 +133,6 @@ export const runCodeServer = async (
+   logger.info(`Using user-data-dir ${args["user-data-dir"]}`)
+   logger.debug(`Using extensions-dir ${args["extensions-dir"]}`)
+ 
+-  if (args.auth === AuthType.Password && !args.password && !args["hashed-password"]) {
+-    throw new Error(
+-      "Please pass in a password via the config file or environment variable ($PASSWORD or $HASHED_PASSWORD)",
+-    )
+-  }
+-
+   const app = await createApp(args)
+   const protocol = args.cert ? "https" : "http"
+   const serverAddress = ensureAddress(app.server, protocol)
+@@ -152,13 +146,29 @@ export const runCodeServer = async (
+       logger.info("    - Using password from $PASSWORD")
+     } else if (args.usingEnvHashedPassword) {
+       logger.info("    - Using password from $HASHED_PASSWORD")
++    } else if (!args.password && !args["hashed-password"]) {
++      logger.info("    - No password configured yet")
+     } else if (args["hashed-password"]) {
+       logger.info(`    - Using hashed-password from ${args.config}`)
+     } else {
+       logger.info(`    - Using password from ${args.config}`)
+     }
+   } else {
+-    logger.info("  - Authentication is disabled")
++    // Owners control their own host, so this is never withheld - but report what
++    // it costs here rather than warning generically. A cloud instance is on the
++    // public internet, where no sign-in means whoever learns the address is in;
++    // a self-hosted instance may only be reachable on a loopback or a LAN.
++    // Config can also select `auth: none`, so name both ways back.
++    const reach = process.env.COMPOSERY_CLOUD_BOX_ID
++      ? "this Composery is published on the internet, so anyone who learns its address"
++      : "anyone who can reach it"
++    logger.warn(
++      `Authentication is disabled: ${reach} gets a root-capable terminal. ` +
++        `Unset COMPOSERY_DISABLE_AUTH (or drop 'auth: none' from ${args.config}) and restart to require sign-in.`,
++    )
++    if (args.password || args["hashed-password"]) {
++      logger.warn("  - A configured password is ignored while authentication is disabled")
++    }
+   }
+ 
+   if (args.cert) {
+--- a/src/node/routes/index.ts
++++ b/src/node/routes/index.ts
+@@ -21,6 +21,10 @@ import { errorHandler, wsErrorHandler } from "./errors"
+ import * as health from "./health"
+ import * as login from "./login"
+ import * as logout from "./logout"
++import * as registerRoute from "./register"
++import * as pwnedRoute from "./pwned"
++import * as changePasswordRoute from "./changePassword"
++import * as cloudAuthRoute from "./cloudAuth"
+ import * as pathProxy from "./pathProxy"
+ import * as update from "./update"
+ import * as vscode from "./vscode"
+@@ -154,11 +158,18 @@ export const register = async (
+   app.router.use("/healthz", health.router)
+   app.wsRouter.use("/healthz", health.wsRouter.router)
+ 
++  app.router.use("/_composery/cloud", cloudAuthRoute.router)
++
+   if (args.auth === AuthType.Password) {
+     app.router.use("/login", login.router)
++    app.router.use("/register", registerRoute.router)
++    app.router.use("/change-password", changePasswordRoute.router)
++    app.router.use("/_composery/pwned", pwnedRoute.router)
+     app.router.use("/logout", logout.router)
+   } else {
+     app.router.all("/login", (req, res) => redirect(req, res, "/", {}))
++    app.router.all("/register", (req, res) => redirect(req, res, "/", {}))
++    app.router.all("/change-password", (req, res) => redirect(req, res, "/", {}))
+     app.router.all("/logout", (req, res) => redirect(req, res, "/", {}))
+   }
+ 
+--- a/src/node/routes/login.ts
++++ b/src/node/routes/login.ts
+@@ -1,65 +1,33 @@
+ import { Router, Request } from "express"
+-import { promises as fs } from "fs"
+-import { RateLimiter as Limiter } from "limiter"
+-import * as path from "path"
+-import { rootPath } from "../constants"
+-import { authenticated, getCookieOptions, redirect, replaceTemplates } from "../http"
++import { cloudConfig } from "../cloud"
++import { authenticated, getCookieOptions, redirect } from "../http"
+ import i18n from "../i18n"
+-import { getPasswordMethod, handlePasswordValidation, sanitizeString, escapeHtml } from "../util"
+-
+-// RateLimiter wraps around the limiter library for logins.
+-// It allows 2 logins every minute plus 12 logins every hour.
+-export class RateLimiter {
+-  private readonly minuteLimiter = new Limiter({ tokensPerInterval: 2, interval: "minute" })
+-  private readonly hourLimiter = new Limiter({ tokensPerInterval: 12, interval: "hour" })
+-
+-  public canTry(): boolean {
+-    // Note: we must check using >= 1 because technically when there are no tokens left
+-    // you get back a number like 0.00013333333333333334
+-    // which would cause fail if the logic were > 0
+-    return this.minuteLimiter.getTokensRemaining() >= 1 || this.hourLimiter.getTokensRemaining() >= 1
+-  }
+-
+-  public removeToken(): boolean {
+-    return this.minuteLimiter.tryRemoveTokens(1) || this.hourLimiter.tryRemoveTokens(1)
+-  }
+-}
++import { setSessionCookie } from "../session"
++import { sanitizeString } from "../util"
++import { authErrorMessage } from "./authErrors"
++import { renderAuthPage, returnPath } from "./authPage"
++import { loginRateLimit, loginSource } from "./loginRateLimit"
++import { hasPassword, isPasswordValid } from "./passwordConfig"
+ 
+ const getRoot = async (req: Request, error?: Error): Promise<string> => {
+-  const content = await fs.readFile(path.join(rootPath, "src/browser/pages/login.html"), "utf8")
+-  const locale = req.args["locale"] || "en"
+-  i18n.changeLanguage(locale)
+-  const welcomeText = req.args["welcome-text"] || (i18n.t("WELCOME", { app: req.args["app-name"] }) as string)
+-
+-  // Determine password message using i18n
+-  let passwordMsg = i18n.t("LOGIN_PASSWORD")
+-  if (req.args.usingEnvPassword) {
+-    passwordMsg = i18n.t("LOGIN_USING_ENV_PASSWORD")
+-  } else if (req.args.usingEnvHashedPassword) {
+-    passwordMsg = i18n.t("LOGIN_USING_HASHED_PASSWORD")
+-  }
+-
+-  return replaceTemplates(
+-    req,
+-    content
+-      .replace(/{{I18N_LOGIN_TITLE}}/g, i18n.t("LOGIN_TITLE", { app: req.args["app-name"] }))
+-      .replace(/{{WELCOME_TEXT}}/g, welcomeText)
+-      .replace(/{{PASSWORD_MSG}}/g, passwordMsg)
+-      .replace(/{{I18N_LOGIN_BELOW}}/g, i18n.t("LOGIN_BELOW"))
+-      .replace(/{{I18N_PASSWORD_PLACEHOLDER}}/g, i18n.t("PASSWORD_PLACEHOLDER"))
+-      .replace(/{{I18N_SUBMIT}}/g, i18n.t("SUBMIT"))
+-      .replace(/{{ERROR}}/, error ? `<div class="error">${escapeHtml(error.message)}</div>` : ""),
+-  )
++  i18n.changeLanguage(req.args["locale"] || "en")
++  return renderAuthPage(req, {
++    page: "login",
++    title: i18n.t("LOGIN_TITLE", { app: req.args["app-name"] }),
++    formLabel: "Sign in",
++    error: error?.message ?? authErrorMessage("login", req.query.error),
++  })
+ }
+ 
+-const limiter = new RateLimiter()
+-
+ export const router = Router()
+ 
+ router.use(async (req, res, next) => {
+-  const to = (typeof req.query.to === "string" && req.query.to) || "/"
++  const to = returnPath(req.query.to)
++  if (!hasPassword(req.args)) {
++    return redirect(req, res, cloudConfig ? "_composery/cloud/authorize" : "register", { to, error: undefined })
++  }
+   if (await authenticated(req)) {
+-    return redirect(req, res, to, { to: undefined })
++    return redirect(req, res, to, { to: undefined, error: undefined })
+   }
+   next()
+ })
+@@ -68,54 +36,39 @@ router.get("/", async (req, res) => {
+   res.send(await getRoot(req))
+ })
+ 
+-router.post<{}, string, { password?: string; base?: string } | undefined, { to?: string }>("/", async (req, res) => {
++router.post<{}, string, { password?: string } | undefined, { to?: string }>("/", async (req, res) => {
+   const password = sanitizeString(req.body?.password)
+-  const hashedPasswordFromArgs = req.args["hashed-password"]
+-
+-  try {
+-    // Check to see if they exceeded their login attempts
+-    if (!limiter.canTry()) {
+-      throw new Error(i18n.t("LOGIN_RATE_LIMIT") as string)
+-    }
+-
+-    if (!password) {
+-      throw new Error(i18n.t("MISS_PASSWORD") as string)
+-    }
+-
+-    const passwordMethod = getPasswordMethod(hashedPasswordFromArgs)
+-    const { isPasswordValid, hashedPassword } = await handlePasswordValidation({
+-      passwordMethod,
+-      hashedPasswordFromArgs,
+-      passwordFromRequestBody: password,
+-      passwordFromArgs: req.args.password,
+-    })
+ 
+-    if (isPasswordValid) {
+-      // The hash does not add any actual security but we do it for
+-      // obfuscation purposes (and as a side effect it handles escaping).
+-      res.cookie(req.cookieSessionName, hashedPassword, getCookieOptions(req))
++  // Check to see if they exceeded their login attempts. The budget is shared
++  // with the current-password step of /change-password: both answer the same
++  // question, so neither can be a way around the other's limit.
++  const source = loginSource(req)
++  if (!loginRateLimit.canTry(source)) {
++    return redirect(req, res, "login", { error: "rate-limit" })
++  }
+ 
+-      const to = (typeof req.query.to === "string" && req.query.to) || "/"
+-      return redirect(req, res, to, { to: undefined })
+-    }
++  if (!password) {
++    return redirect(req, res, "login", { error: "missing" })
++  }
+ 
+-    // Note: successful logins should not count against the RateLimiter
+-    // which is why this logic must come after the successful login logic
+-    limiter.removeToken()
++  if (await isPasswordValid(req.args, password)) {
++    setSessionCookie(req, res, getCookieOptions(req))
++    return redirect(req, res, returnPath(req.query.to), { to: undefined, error: undefined })
++  }
+ 
+-    console.error(
+-      "Failed login attempt",
+-      JSON.stringify({
+-        xForwardedFor: req.headers["x-forwarded-for"],
+-        remoteAddress: req.connection.remoteAddress,
+-        userAgent: req.headers["user-agent"],
+-        timestamp: Math.floor(new Date().getTime() / 1000),
+-      }),
+-    )
++  // Note: successful logins should not count against the rate limit
++  // which is why this logic must come after the successful login logic
++  loginRateLimit.recordFailure(source)
++
++  console.error(
++    "Failed login attempt",
++    JSON.stringify({
++      xForwardedFor: req.headers["x-forwarded-for"],
++      remoteAddress: req.connection.remoteAddress,
++      userAgent: req.headers["user-agent"],
++      timestamp: Math.floor(new Date().getTime() / 1000),
++    }),
++  )
+ 
+-    throw new Error(i18n.t("INCORRECT_PASSWORD") as string)
+-  } catch (error: any) {
+-    const renderedHtml = await getRoot(req, error)
+-    res.send(renderedHtml)
+-  }
++  return redirect(req, res, "login", { error: "incorrect" })
+ })
+--- a/src/node/util.ts
++++ b/src/node/util.ts
+@@ -1,13 +1,10 @@
+ import * as argon2 from "argon2"
+ import * as cp from "child_process"
+-import * as crypto from "crypto"
+ import envPaths from "env-paths"
+ import { promises as fs } from "fs"
+ import * as net from "net"
+ import * as os from "os"
+ import * as path from "path"
+-import safeCompare from "safe-compare"
+-import * as util from "util"
+ import xdgBasedir from "xdg-basedir"
+ 
+ export interface Paths {
+@@ -131,12 +128,6 @@ DNS.1 = ${hostname}
+   }
+ }
+ 
+-export const generatePassword = async (length = 24): Promise<string> => {
+-  const buffer = Buffer.alloc(Math.ceil(length / 2))
+-  await util.promisify(crypto.randomFill)(buffer)
+-  return buffer.toString("hex").substring(0, length)
+-}
+-
+ /**
+  * Used to hash the password.
+  */
+@@ -154,142 +145,6 @@ export const isHashMatch = async (password: string, hash: string) => {
+   return await argon2.verify(hash, password)
+ }
+ 
+-/**
+- * Used to hash the password using the sha256
+- * algorithm. We only use this to for checking
+- * the hashed-password set in the config.
+- *
+- * Kept for legacy reasons.
+- */
+-export const hashLegacy = (str: string): string => {
+-  return crypto.createHash("sha256").update(str).digest("hex")
+-}
+-
+-/**
+- * Used to check if the password matches the hash using
+- * the hashLegacy function
+- */
+-export const isHashLegacyMatch = (password: string, hashPassword: string) => {
+-  const hashedWithLegacy = hashLegacy(password)
+-  return safeCompare(hashedWithLegacy, hashPassword)
+-}
+-
+-export type PasswordMethod = "SHA256" | "ARGON2" | "PLAIN_TEXT"
+-
+-/**
+- * Used to determine the password method.
+- *
+- * There are three options for the return value:
+- * 1. "SHA256" -> the legacy hashing algorithm
+- * 2. "ARGON2" -> the newest hashing algorithm
+- * 3. "PLAIN_TEXT" -> regular ol' password with no hashing
+- *
+- * @returns {PasswordMethod} "SHA256" | "ARGON2" | "PLAIN_TEXT"
+- */
+-export function getPasswordMethod(hashedPassword: string | undefined): PasswordMethod {
+-  if (!hashedPassword) {
+-    return "PLAIN_TEXT"
+-  }
+-
+-  // This is the new hashing algorithm
+-  if (hashedPassword.includes("$argon")) {
+-    return "ARGON2"
+-  }
+-
+-  // This is the legacy hashing algorithm
+-  return "SHA256"
+-}
+-
+-type PasswordValidation = {
+-  isPasswordValid: boolean
+-  hashedPassword: string
+-}
+-
+-type HandlePasswordValidationArgs = {
+-  /** The PasswordMethod */
+-  passwordMethod: PasswordMethod
+-  /** The password provided by the user */
+-  passwordFromRequestBody: string
+-  /** The password set in PASSWORD or config */
+-  passwordFromArgs: string | undefined
+-  /** The hashed-password set in HASHED_PASSWORD or config */
+-  hashedPasswordFromArgs: string | undefined
+-}
+-
+-/**
+- * Checks if a password is valid and also returns the hash
+- * using the PasswordMethod
+- */
+-export async function handlePasswordValidation({
+-  passwordMethod,
+-  passwordFromArgs,
+-  passwordFromRequestBody,
+-  hashedPasswordFromArgs,
+-}: HandlePasswordValidationArgs): Promise<PasswordValidation> {
+-  const passwordValidation = <PasswordValidation>{
+-    isPasswordValid: false,
+-    hashedPassword: "",
+-  }
+-
+-  switch (passwordMethod) {
+-    case "PLAIN_TEXT": {
+-      const isValid = passwordFromArgs ? safeCompare(passwordFromRequestBody, passwordFromArgs) : false
+-      passwordValidation.isPasswordValid = isValid
+-
+-      const hashedPassword = await hash(passwordFromRequestBody)
+-      passwordValidation.hashedPassword = hashedPassword
+-      break
+-    }
+-    case "SHA256": {
+-      const isValid = isHashLegacyMatch(passwordFromRequestBody, hashedPasswordFromArgs || "")
+-      passwordValidation.isPasswordValid = isValid
+-
+-      passwordValidation.hashedPassword = hashedPasswordFromArgs || (await hashLegacy(passwordFromRequestBody))
+-      break
+-    }
+-    case "ARGON2": {
+-      const isValid = await isHashMatch(passwordFromRequestBody, hashedPasswordFromArgs || "")
+-      passwordValidation.isPasswordValid = isValid
+-
+-      passwordValidation.hashedPassword = hashedPasswordFromArgs || ""
+-      break
+-    }
+-    default:
+-      break
+-  }
+-
+-  return passwordValidation
+-}
+-
+-export type IsCookieValidArgs = {
+-  passwordMethod: PasswordMethod
+-  cookieKey: string
+-  hashedPasswordFromArgs: string | undefined
+-  passwordFromArgs: string | undefined
+-}
+-
+-/** Checks if a req.cookies.key is valid using the PasswordMethod */
+-export async function isCookieValid({
+-  passwordFromArgs = "",
+-  cookieKey,
+-  hashedPasswordFromArgs = "",
+-  passwordMethod,
+-}: IsCookieValidArgs): Promise<boolean> {
+-  let isValid = false
+-  switch (passwordMethod) {
+-    case "PLAIN_TEXT":
+-      isValid = await isHashMatch(passwordFromArgs, cookieKey)
+-      break
+-    case "ARGON2":
+-    case "SHA256":
+-      isValid = safeCompare(cookieKey, hashedPasswordFromArgs)
+-      break
+-    default:
+-      break
+-  }
+-  return isValid
+-}
+-
+ /** Ensures that the input is sanitized by checking
+  * - it's a string
+  * - greater than 0 characters

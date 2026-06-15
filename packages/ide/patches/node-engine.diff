@@ -1,0 +1,16 @@
+Run the server on the Node this repo builds with.
+
+code-server pins Node 22 in its engines field, which npm enforces on install, so
+the assembled tree refuses to build under the toolchain everything else here
+uses. A range rather than a single major, and its ceiling is the one .nvmrc
+names - `IDE engine patch rejects the old upstream Node major` pins it there, so
+a Node bump that forgets this file fails in the checkout instead of in an image
+build.
+
+--- a/package.json
++++ b/package.json
+@@ -106,3 +106,3 @@
+   "engines": {
+-    "node": "22"
++    "node": ">=24.15.0 <25"
+   },

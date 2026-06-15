@@ -1,0 +1,245 @@
+Root path proxies are the only proxy boundary.
+
+- The browser's port-proxy URL stays root-relative even though the workbench is
+  mounted below /ide. COMPOSERY_PROXY_URI remains the supported override; the
+  image's VSCODE_PROXY_URI supplies the uniform default.
+- domainProxy and --proxy-domain go with it. Once root path proxies are the
+  supported boundary the flag can no longer proxy anything: it only rewrote the
+  Ports tab at a host scheme nothing serves, and lent its name to an
+  origin-trust comment describing rules of its own.
+
+--- a/lib/vscode/src/vs/server/node/webClientServer.ts
++++ b/lib/vscode/src/vs/server/node/webClientServer.ts
+@@ -374,7 +374,7 @@ export class WebClientServer {
+ 			rootEndpoint: rootBase,
+ 			logoutEndpoint: this._environmentService.args['auth'] && this._environmentService.args['auth'] !== "none" ? rootBase + '/logout' : undefined,
+ 			changePasswordEndpoint: this._environmentService.args['change-password'] ? rootBase + '/change-password' : undefined,
+-			proxyEndpointTemplate: process.env.VSCODE_PROXY_URI ?? rootBase + '/proxy/{{port}}/',
++			proxyEndpointTemplate: process.env.COMPOSERY_PROXY_URI ?? process.env.VSCODE_PROXY_URI ?? rootBase + '/proxy/{{port}}/',
+ 			serviceWorker: {
+ 				scope: vscodeBase + '/',
+ 				path: rootBase + '/_static/out/browser/serviceWorker.js',
+--- a/src/node/routes/domainProxy.ts
++++ /dev/null
+@@ -1,118 +0,0 @@
+-import { Request, Router } from "express"
+-import { HttpCode, HttpError } from "../../common/http"
+-import { getHost, ensureProxyEnabled, authenticated, ensureAuthenticated, ensureOrigin, redirect, self } from "../http"
+-import { proxy } from "../proxy"
+-import { Router as WsRouter } from "../wsRouter"
+-
+-export const router = Router()
+-
+-const proxyDomainToRegex = (matchString: string): RegExp => {
+-  const escapedMatchString = matchString.replace(/[.*+?^$()|[\]\\]/g, "\\$&")
+-
+-  // Replace {{port}} with a regex group to capture the port
+-  // Replace {{host}} with .+ to allow any host match (so rely on DNS record here)
+-  let regexString = escapedMatchString.replace("{{port}}", "(\\d+)")
+-  regexString = regexString.replace("{{host}}", ".+")
+-
+-  regexString = regexString.replace(/[{}]/g, "\\$&") //replace any '{}' that might be left
+-
+-  return new RegExp("^" + regexString + "$")
+-}
+-
+-let proxyRegexes: RegExp[] = []
+-const proxyDomainsToRegex = (proxyDomains: string[]): RegExp[] => {
+-  if (proxyDomains.length !== proxyRegexes.length) {
+-    proxyRegexes = proxyDomains.map(proxyDomainToRegex)
+-  }
+-  return proxyRegexes
+-}
+-
+-/**
+- * Return the port if the request should be proxied.
+- *
+- * The proxy-domain should be of format anyprefix-{{port}}-anysuffix.{{host}}, where {{host}} is optional
+- * e.g. code-8080.domain.tld would match for code-{{port}}.domain.tld and code-{{port}}.{{host}}.
+- *
+- */
+-const maybeProxy = (req: Request): string | undefined => {
+-  const reqDomain = getHost(req)
+-  if (reqDomain === undefined) {
+-    return undefined
+-  }
+-
+-  const regexs = proxyDomainsToRegex(req.args["proxy-domain"])
+-
+-  for (const regex of regexs) {
+-    const match = reqDomain.match(regex)
+-
+-    if (match) {
+-      return match[1] // match[1] contains the port
+-    }
+-  }
+-
+-  return undefined
+-}
+-
+-router.all(/.*/, async (req, res, next) => {
+-  const port = maybeProxy(req)
+-  if (!port) {
+-    return next()
+-  }
+-
+-  ensureProxyEnabled(req)
+-
+-  if (req.method === "OPTIONS" && req.args["skip-auth-preflight"]) {
+-    // Allow preflight requests with `skip-auth-preflight` flag
+-    return next()
+-  }
+-
+-  // Must be authenticated to use the proxy.
+-  const isAuthenticated = await authenticated(req)
+-  if (!isAuthenticated) {
+-    // Let the assets through since they're used on the login page.
+-    if (req.path.startsWith("/_static/") && req.method === "GET") {
+-      return next()
+-    }
+-
+-    // Assume anything that explicitly accepts text/html is a user browsing a
+-    // page (as opposed to an xhr request). Don't use `req.accepts()` since
+-    // *every* request that I've seen (in Firefox and Chromium at least)
+-    // includes `*/*` making it always truthy. Even for css/javascript.
+-    if (req.headers.accept && req.headers.accept.includes("text/html")) {
+-      // Let the login through.
+-      if (/\/login\/?/.test(req.path)) {
+-        return next()
+-      }
+-      // Redirect all other pages to the login.
+-      const to = self(req)
+-      return redirect(req, res, "login", {
+-        to: to !== "/" ? to : undefined,
+-      })
+-    }
+-
+-    // Everything else gets an unauthorized message.
+-    throw new HttpError("Unauthorized", HttpCode.Unauthorized)
+-  }
+-
+-  proxy.web(req, res, {
+-    ignorePath: true,
+-    target: `http://0.0.0.0:${port}${req.originalUrl}`,
+-  })
+-})
+-
+-export const wsRouter = WsRouter()
+-
+-wsRouter.ws(/.*/, async (req, _, next) => {
+-  const port = maybeProxy(req)
+-  if (!port) {
+-    return next()
+-  }
+-
+-  ensureProxyEnabled(req)
+-  ensureOrigin(req)
+-  await ensureAuthenticated(req)
+-  proxy.ws(req, req.ws, req.head, {
+-    ignorePath: true,
+-    target: `http://0.0.0.0:${port}${req.originalUrl}`,
+-  })
+-})
+--- a/src/node/routes/index.ts
++++ b/src/node/routes/index.ts
+@@ -16,7 +16,6 @@ import { redirect } from "../http"
+ import { CoderSettings, SettingsProvider } from "../settings"
+ import { getMediaMime, paths } from "../util"
+ import type { WebsocketRequest } from "../wsRouter"
+-import * as domainProxy from "./domainProxy"
+ import { errorHandler, wsErrorHandler } from "./errors"
+ import * as health from "./health"
+ import * as login from "./login"
+@@ -113,9 +112,6 @@ export const register = async (
+     res.send(await fs.readFile(resourcePath))
+   })
+ 
+-  app.router.use("/", domainProxy.router)
+-  app.wsRouter.use("/", domainProxy.wsRouter.router)
+-
+   app.router.all("/proxy/:port{/*path}", async (req, res) => {
+     await pathProxy.proxy(req, res)
+   })
+--- a/src/node/cli.ts
++++ b/src/node/cli.ts
+@@ -87,7 +87,6 @@ export interface UserProvidedArgs extends UserProvidedCodeArgs {
+   "socket-mode"?: string
+   "trusted-origins"?: string[]
+   version?: boolean
+-  "proxy-domain"?: string[]
+   "skip-auth-preflight"?: boolean
+   "reuse-window"?: boolean
+   "new-window"?: boolean
+@@ -265,7 +264,6 @@ export const options: Options<Required<UserProvidedArgs>> = {
+     type: "string",
+     description: "GitHub authentication token (can only be passed in via $GITHUB_TOKEN or the config file).",
+   },
+-  "proxy-domain": { type: "string[]", description: "Domain used for proxying ports." },
+   "skip-auth-preflight": {
+     type: "boolean",
+     description: "Allows preflight requests through proxy without authentication.",
+@@ -510,7 +508,6 @@ export interface DefaultedArgs extends ConfigArgs {
+   }
+   host: string
+   port: number
+-  "proxy-domain": string[]
+   verbose: boolean
+   usingEnvPassword: boolean
+   usingEnvHashedPassword: boolean
+@@ -671,25 +668,6 @@ export async function setDefaults(cliArgs: UserProvidedArgs, configArgs?: Config
+   delete process.env.HASHED_PASSWORD
+   delete process.env.GITHUB_TOKEN
+ 
+-  // Filter duplicate proxy domains and remove any leading `*.`.
+-  const proxyDomains = new Set((args["proxy-domain"] || []).map((d) => d.replace(/^\*\./, "")))
+-  const finalProxies = []
+-
+-  for (const proxyDomain of proxyDomains) {
+-    if (!proxyDomain.includes("{{port}}")) {
+-      finalProxies.push("{{port}}." + proxyDomain)
+-    } else {
+-      finalProxies.push(proxyDomain)
+-    }
+-  }
+-
+-  // all proxies are of format anyprefix-{{port}}-anysuffix.{{host}}, where {{host}} is optional
+-  // e.g. code-8080.domain.tld would match for code-{{port}}.domain.tld and code-{{port}}.{{host}}
+-  if (finalProxies.length > 0 && !process.env.VSCODE_PROXY_URI) {
+-    process.env.VSCODE_PROXY_URI = `//${finalProxies[0]}`
+-  }
+-  args["proxy-domain"] = finalProxies
+-
+   args["app-name"] ??= "Composery"
+ 
+   args._ = getResolvedPathsFromArgs(args)
+--- a/src/node/http.ts
++++ b/src/node/http.ts
+@@ -292,7 +292,7 @@ export function ensureOrigin(req: express.Request, _?: express.Response, next?:
+ /**
+  * Return true if the origin matches any trusted origin.  Entries are matched
+  * as exact strings, the special wildcard `"*"`, or `*.example.com`-style
+- * domain wildcards (same as --proxy-domain).
++ * domain wildcards.
+  */
+ export function isTrustedOrigin(origin: string, trustedOrigins: string[]): boolean {
+   return trustedOrigins.some((trusted) => {
+--- a/src/node/main.ts
++++ b/src/node/main.ts
+@@ -3,7 +3,6 @@ import http from "http"
+ import * as os from "os"
+ import * as path from "path"
+ import { Disposable } from "../common/emitter"
+-import { plural } from "../common/util"
+ import { createApp, ensureAddress } from "./app"
+ import { AuthType, DefaultedArgs, Feature, toCodeArgs, UserProvidedArgs } from "./cli"
+ import { commit, version, vsRootPath } from "./constants"
+@@ -200,9 +199,6 @@ export const runCodeServer = async (
+ 
+   if (args["disable-proxy"]) {
+     logger.info("  - Proxy disabled")
+-  } else if (args["proxy-domain"].length > 0) {
+-    logger.info(`  - ${plural(args["proxy-domain"].length, "Proxying the following domain")}:`)
+-    args["proxy-domain"].forEach((domain) => logger.info(`    - ${domain}`))
+   }
+   if (args["skip-auth-preflight"]) {
+     logger.info("  - Skipping authentication for preflight requests")

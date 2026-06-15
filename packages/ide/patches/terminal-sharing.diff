@@ -1,0 +1,721 @@
+A terminal shared across clients.
+
+A terminal belongs to the server, not to the browser tab that opened it. Workspace
+identity is canonicalised from the folder path, so the same workspace reached
+through a different origin (localhost against a LAN address) is one workspace,
+and it is the only identity a backend reports - the one it answers to as well as
+the one it sends. Layouts merge across clients instead of the last writer
+winning; attach state is per client and only the final detach releases the pty.
+Replays are bound to the renderer that asked for them, so concurrent starts do
+not cross wires, and live data reaches a client only once its own replay has
+landed. Single-recipient events go to the one client that can act on them: the
+UI target for a terminal, the first client of a workspace for a reply the pty
+host accepts once, and every client of the workspace for a detach request, which
+names an instance only its own window holds.
+
+Each of those rules is an overlay module this patch calls, so it can be run by a
+test rather than only read off a diff: terminalWorkspaceId.ts is the identity,
+terminalLayoutMerge.ts the merge, terminalClientState.ts who holds a terminal and
+which of them a single-recipient event goes to, terminalStartState.ts which
+client a replay belongs to.
+
+Which client sizes the pty, and which clients' acknowledgements advance its flow
+control, are not here - the pty host arbitrates both per client, through a
+registry of its own (terminal-clients.diff).
+
+--- a/lib/vscode/src/vs/platform/terminal/common/terminal.ts
++++ b/lib/vscode/src/vs/platform/terminal/common/terminal.ts
+@@ -565,6 +565,7 @@ export interface IShellLaunchConfig {
+ 	attachPersistentProcess?: {
+ 		id: number;
+ 		findRevivedId?: boolean;
++		failOnAttachError?: boolean;
+ 		pid: number;
+ 		title: string;
+ 		titleSource: TitleEventSource;
+@@ -1127,6 +1128,7 @@ export interface ITerminalCommandSelector {
+ 
+ export interface ITerminalBackend extends ITerminalBackendPtyServiceContributions {
+ 	readonly remoteAuthority: string | undefined;
++	readonly onDidRequestTerminalSync?: Event<void>;
+ 
+ 	readonly isResponsive: boolean;
+ 
+--- a/lib/vscode/src/vs/platform/terminal/common/terminalProcess.ts
++++ b/lib/vscode/src/vs/platform/terminal/common/terminalProcess.ts
+@@ -37,6 +37,7 @@ export interface ISetTerminalLayoutInfoArgs {
+ 
+ export interface IGetTerminalLayoutInfoArgs {
+ 	workspaceId: string;
++	layout?: ISetTerminalLayoutInfoArgs;
+ }
+ 
+ export interface IProcessDetails {
+--- a/lib/vscode/src/vs/platform/terminal/node/ptyService.ts
++++ b/lib/vscode/src/vs/platform/terminal/node/ptyService.ts
+@@ -34,6 +34,7 @@ import pkg from '@xterm/headless';
+ import { AutoRepliesPtyServiceContribution } from './terminalContrib/autoReplies/autoRepliesContribController.js';
+ import { hasKey, isFunction, isNumber, isString } from '../../../base/common/types.js';
+ import { getWindowsBuildNumberAsync } from '../../../base/node/windowsVersion.js';
++import { IMergeableTerminalProcess, mergeTerminalLayouts } from './terminalLayoutMerge.js';
+ 
+ type XtermTerminal = pkg.Terminal;
+ const { Terminal: XtermTerminal } = pkg;
+@@ -568,7 +569,6 @@ export class PtyService extends Disposable implements IPtyService {
+ 		return undefined;
+ 	}
+ 
+-	@traceRpc
+ 	async setTerminalLayoutInfo(args: ISetTerminalLayoutInfoArgs): Promise<void> {
+ 		this._workspaceLayoutInfos.set(args.workspaceId, args);
+ 	}
+@@ -576,7 +576,7 @@ export class PtyService extends Disposable implements IPtyService {
+ 	@traceRpc
+ 	async getTerminalLayoutInfo(args: IGetTerminalLayoutInfoArgs): Promise<ITerminalsLayoutInfo | undefined> {
+ 		performance.mark('code/willGetTerminalLayoutInfo');
+-		const layout = this._workspaceLayoutInfos.get(args.workspaceId);
++		const layout = mergeTerminalLayouts(args.workspaceId, args.layout ?? this._workspaceLayoutInfos.get(args.workspaceId), this._adoptableProcesses(args.workspaceId));
+ 		if (layout) {
+ 			const doneSet: Set<number> = new Set();
+ 			const expandedTabs = await Promise.all(layout.tabs.map(async tab => this._expandTerminalTab(args.workspaceId, tab, doneSet)));
+@@ -589,6 +589,17 @@ export class PtyService extends Disposable implements IPtyService {
+ 		return undefined;
+ 	}
+ 
++	// Which of this host's terminals a client may be shown in its layout: the ones
++	// belonging to the workspace it asked about, and only those meant to outlive
++	// the window that made them.
++	private *_adoptableProcesses(workspaceId: string): Iterable<readonly [number, IMergeableTerminalProcess]> {
++		for (const [id, process] of this._ptys) {
++			if (process.workspaceId === workspaceId && process.shouldPersistTerminal) {
++				yield [id, process];
++			}
++		}
++	}
++
+ 	private async _expandTerminalTab(workspaceId: string, tab: ITerminalTabLayoutInfoById, doneSet: Set<number>): Promise<ITerminalTabLayoutInfoDto> {
+ 		const expandedTerminals = (await Promise.all(tab.terminals.map(t => this._expandTerminalInstance(workspaceId, t, doneSet))));
+ 		const filtered = expandedTerminals.filter(term => term.terminal !== null) as IRawTerminalInstanceLayoutInfo<IProcessDetails>[];
+@@ -613,7 +624,10 @@ export class PtyService extends Disposable implements IPtyService {
+ 			}
+ 			doneSet.add(persistentProcessId);
+ 			const persistentProcess = this._throwIfNoPty(persistentProcessId);
+-			const processDetails = persistentProcess && await this._buildProcessDetails(ptyId, persistentProcess, revivedPtyId !== undefined);
++			if (persistentProcess.workspaceId !== workspaceId || !persistentProcess.shouldPersistTerminal) {
++				throw new Error(`Terminal ${persistentProcessId} does not belong to workspace ${workspaceId}`);
++			}
++			const processDetails = await this._buildProcessDetails(ptyId, persistentProcess, revivedPtyId !== undefined, false);
+ 			return {
+ 				terminal: { ...processDetails, id: persistentProcessId },
+ 				relativeSize: hasLayout ? t.relativeSize : 0
+@@ -635,11 +649,11 @@ export class PtyService extends Disposable implements IPtyService {
+ 		return `${workspaceId}-${ptyId}`;
+ 	}
+ 
+-	private async _buildProcessDetails(id: number, persistentProcess: PersistentTerminalProcess, wasRevived: boolean = false): Promise<IProcessDetails> {
++	private async _buildProcessDetails(id: number, persistentProcess: PersistentTerminalProcess, wasRevived: boolean = false, checkOrphan: boolean = true): Promise<IProcessDetails> {
+ 		performance.mark(`code/willBuildProcessDetails/${id}`);
+ 		// If the process was just revived, don't do the orphan check as it will
+ 		// take some time
+-		const [cwd, isOrphan] = await Promise.all([persistentProcess.getCwd(), wasRevived ? true : persistentProcess.isOrphaned()]);
++		const [cwd, isOrphan] = await Promise.all([persistentProcess.getCwd(), wasRevived ? true : checkOrphan ? persistentProcess.isOrphaned() : false]);
+ 		const result = {
+ 			id,
+ 			title: persistentProcess.title,
+--- a/lib/vscode/src/vs/server/node/remoteTerminalChannel.ts
++++ b/lib/vscode/src/vs/server/node/remoteTerminalChannel.ts
+@@ -6,7 +6,7 @@
+ import * as os from 'os';
+ import { Emitter, Event } from '../../base/common/event.js';
+ import { cloneAndChange } from '../../base/common/objects.js';
+-import { Disposable } from '../../base/common/lifecycle.js';
++import { combinedDisposable, Disposable, toDisposable } from '../../base/common/lifecycle.js';
+ import * as path from '../../base/common/path.js';
+ import * as platform from '../../base/common/platform.js';
+ import { URI } from '../../base/common/uri.js';
+@@ -33,6 +33,9 @@ import { IConfigurationService } from '../../platform/configuration/common/confi
+ import { ILogService } from '../../platform/log/common/log.js';
+ import { promiseWithResolvers } from '../../base/common/async.js';
+ import { shouldUseEnvironmentVariableCollection } from '../../platform/terminal/common/terminalEnvironment.js';
++import { hasKey } from '../../base/common/types.js';
++import { TerminalClientState } from './terminalClientState.js';
++import { TerminalStartState } from './terminalStartState.js';
+ 
+ class CustomVariableResolver extends AbstractVariableResolverService {
+ 	constructor(
+@@ -87,6 +90,15 @@ class CustomVariableResolver extends AbstractVariableResolverService {
+ }
+ 
+ export class RemoteTerminalChannel extends Disposable implements IServerChannel<RemoteAgentConnectionContext> {
++	private readonly _clientState = new TerminalClientState();
++	private readonly _startState = new TerminalStartState();
++	private readonly _layouts = new Map<string, Map<string, ISetTerminalLayoutInfoArgs>>();
++	private readonly _latestLayouts = new Map<string, ISetTerminalLayoutInfoArgs>();
++	private readonly _workspaceClients = new Map<string, Set<string>>();
++	private readonly _processWorkspaces = new Map<number, { workspaceId: string; persistent: boolean }>();
++	private readonly _freshPtys = new Set<number>();
++	private readonly _announcedPtys = new Set<number>();
++	private readonly _onPersistentTerminalInventoryChange = this._register(new Emitter<{ workspaceId: string }>());
+ 
+ 	private _lastReqId = 0;
+ 	private readonly _pendingCommands = new Map<number, {
+@@ -107,6 +119,28 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
+ 		private readonly _configurationService: IConfigurationService
+ 	) {
+ 		super();
++		this._register(this._ptyHostService.onProcessReplay(e => {
++			const target = this._startState.target(e.id);
++			if (target) {
++				this._clientState.markStreaming(e.id, target);
++			}
++			this._startState.replay(e.id);
++		}));
++		this._register(this._ptyHostService.onProcessExit(e => {
++			this._startState.exit(e.id);
++			const process = this._processWorkspaces.get(e.id);
++			if (process?.persistent) {
++				this._onPersistentTerminalInventoryChange.fire({ workspaceId: process.workspaceId });
++			}
++			// After this tick: every client's own exit listener is filtered on still
++			// being attached, and they are downstream of this one.
++			setTimeout(() => {
++				this._clientState.clear(e.id);
++				this._processWorkspaces.delete(e.id);
++				this._freshPtys.delete(e.id);
++				this._announcedPtys.delete(e.id);
++			});
++		}));
+ 	}
+ 
+ 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+@@ -116,10 +150,26 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
+ 
+ 			case RemoteTerminalChannelRequest.CreateProcess: {
+ 				const uriTransformer = createURITransformer(ctx.remoteAuthority);
+-				return this._createProcess(uriTransformer, <ICreateTerminalProcessArguments>args);
++				const createArgs = <ICreateTerminalProcessArguments>args;
++				this._addWorkspaceClient(createArgs.workspaceId, ctx.clientId);
++				const result = await this._createProcess(uriTransformer, createArgs);
++				this._clientState.attach(result.persistentTerminalId, ctx.clientId, true, true);
++				this._freshPtys.add(result.persistentTerminalId);
++				this._processWorkspaces.set(result.persistentTerminalId, { workspaceId: createArgs.workspaceId, persistent: createArgs.shouldPersistTerminal });
++				return result;
++			}
++			case RemoteTerminalChannelRequest.AttachToProcess: {
++				await this._ptyHostService.attachToProcess(args[0]);
++				this._clientState.attach(args[0], ctx.clientId, false);
++				return;
++			}
++			case RemoteTerminalChannelRequest.DetachFromProcess: {
++				const detached = this._clientState.detach(args[0], ctx.clientId);
++				if (!detached.attached) {
++					return;
++				}
++				return detached.final ? this._ptyHostService.detachFromProcess(args[0], args[1]) : undefined;
+ 			}
+-			case RemoteTerminalChannelRequest.AttachToProcess: return this._ptyHostService.attachToProcess.apply(this._ptyHostService, args);
+-			case RemoteTerminalChannelRequest.DetachFromProcess: return this._ptyHostService.detachFromProcess.apply(this._ptyHostService, args);
+ 
+ 			case RemoteTerminalChannelRequest.ListProcesses: return this._ptyHostService.listProcesses.apply(this._ptyHostService, args);
+ 			case RemoteTerminalChannelRequest.GetLatency: return this._ptyHostService.getLatency.apply(this._ptyHostService, args);
+@@ -127,8 +177,31 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
+ 			case RemoteTerminalChannelRequest.OrphanQuestionReply: return this._ptyHostService.orphanQuestionReply.apply(this._ptyHostService, args);
+ 			case RemoteTerminalChannelRequest.AcceptPtyHostResolvedVariables: return this._ptyHostService.acceptPtyHostResolvedVariables.apply(this._ptyHostService, args);
+ 
+-			case RemoteTerminalChannelRequest.Start: return this._ptyHostService.start.apply(this._ptyHostService, args);
+-			case RemoteTerminalChannelRequest.Input: return this._ptyHostService.input.apply(this._ptyHostService, args);
++			case RemoteTerminalChannelRequest.Start: {
++				const id = args[0];
++				if (!this._clientState.isAttached(id, ctx.clientId)) {
++					throw new Error(`Client "${ctx.clientId}" is not attached to terminal "${id}"`);
++				}
++				const fresh = this._freshPtys.has(id);
++				const result = await this._startState.run(id, ctx.clientId, result => !fresh && !(result && hasKey(result, { message: true })), () => this._ptyHostService.start(id));
++				if (result && hasKey(result, { message: true })) {
++					return result;
++				}
++				this._freshPtys.delete(id);
++				const process = this._processWorkspaces.get(id);
++				if (process?.persistent && !this._announcedPtys.has(id)) {
++					this._announcedPtys.add(id);
++					this._onPersistentTerminalInventoryChange.fire({ workspaceId: process.workspaceId });
++				}
++				return result;
++			}
++			case RemoteTerminalChannelRequest.Input: {
++				if (!this._clientState.isAttached(args[0], ctx.clientId)) {
++					throw new Error(`Client "${ctx.clientId}" is not attached to terminal "${args[0]}"`);
++				}
++				this._clientState.takeUiControl(args[0], ctx.clientId);
++				return this._ptyHostService.input(args[0], args[1]);
++			}
+ 			case RemoteTerminalChannelRequest.SendSignal: return this._ptyHostService.sendSignal.apply(this._ptyHostService, args);
+ 			case RemoteTerminalChannelRequest.AcknowledgeDataEvent: return this._ptyHostService.acknowledgeDataEvent.apply(this._ptyHostService, args);
+ 			case RemoteTerminalChannelRequest.Shutdown: return this._ptyHostService.shutdown.apply(this._ptyHostService, args);
+@@ -146,8 +219,40 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
+ 			case RemoteTerminalChannelRequest.GetProfiles: return this._getProfiles.apply(this, args);
+ 			case RemoteTerminalChannelRequest.GetEnvironment: return this._getEnvironment();
+ 			case RemoteTerminalChannelRequest.GetWslPath: return this._getWslPath(args[0], args[1]);
+-			case RemoteTerminalChannelRequest.GetTerminalLayoutInfo: return this._ptyHostService.getTerminalLayoutInfo(<IGetTerminalLayoutInfoArgs>args);
+-			case RemoteTerminalChannelRequest.SetTerminalLayoutInfo: return this._ptyHostService.setTerminalLayoutInfo(<ISetTerminalLayoutInfoArgs>args);
++			case RemoteTerminalChannelRequest.GetTerminalLayoutInfo: {
++				const getArgs = <IGetTerminalLayoutInfoArgs>args;
++				this._addWorkspaceClient(getArgs.workspaceId, ctx.clientId);
++				const byWorkspace = this._clientLayouts(ctx.clientId);
++				const seededLayout = byWorkspace.get(getArgs.workspaceId) ?? this._latestLayouts.get(getArgs.workspaceId);
++				if (seededLayout && !byWorkspace.has(getArgs.workspaceId)) {
++					byWorkspace.set(getArgs.workspaceId, seededLayout);
++				}
++				getArgs.layout = seededLayout;
++				const layoutInfo = await this._ptyHostService.getTerminalLayoutInfo(getArgs);
++				for (const tab of layoutInfo?.tabs ?? []) {
++					for (const terminal of tab.terminals) {
++						if (terminal.terminal) {
++							terminal.terminal.isOrphan = !this._clientState.isAttached(terminal.terminal.id, ctx.clientId);
++							this._rememberWorkspace(terminal.terminal.id, getArgs.workspaceId);
++						}
++					}
++				}
++				for (const terminal of layoutInfo?.background ?? []) {
++					if (terminal) {
++						terminal.isOrphan = !this._clientState.isAttached(terminal.id, ctx.clientId);
++						this._rememberWorkspace(terminal.id, getArgs.workspaceId);
++					}
++				}
++				return layoutInfo;
++			}
++			case RemoteTerminalChannelRequest.SetTerminalLayoutInfo: {
++				const layout = <ISetTerminalLayoutInfoArgs>args;
++				this._addWorkspaceClient(layout.workspaceId, ctx.clientId);
++				const byWorkspace = this._clientLayouts(ctx.clientId);
++				byWorkspace.set(layout.workspaceId, layout);
++				this._latestLayouts.set(layout.workspaceId, layout);
++				return this._ptyHostService.setTerminalLayoutInfo(layout);
++			}
+ 			case RemoteTerminalChannelRequest.SerializeTerminalState: return this._ptyHostService.serializeTerminalState.apply(this._ptyHostService, args);
+ 			case RemoteTerminalChannelRequest.ReviveTerminalProcesses: return this._ptyHostService.reviveTerminalProcesses.apply(this._ptyHostService, args);
+ 			case RemoteTerminalChannelRequest.GetRevivedPtyNewId: return this._ptyHostService.getRevivedPtyNewId.apply(this._ptyHostService, args);
+@@ -168,27 +273,94 @@ export class RemoteTerminalChannel extends Disposable implements IServerChannel<
+ 		throw new Error(`IPC Command ${command} not found`);
+ 	}
+ 
+-	listen<T>(_: unknown, event: RemoteTerminalChannelEvent, _arg: unknown): Event<T> {
++	listen<T>(ctx: RemoteAgentConnectionContext, event: RemoteTerminalChannelEvent, _arg: unknown): Event<T> {
+ 		switch (event) {
+ 			case RemoteTerminalChannelEvent.OnPtyHostExitEvent: return (this._ptyHostService.onPtyHostExit || Event.None) as Event<T>;
+ 			case RemoteTerminalChannelEvent.OnPtyHostStartEvent: return (this._ptyHostService.onPtyHostStart || Event.None) as Event<T>;
+ 			case RemoteTerminalChannelEvent.OnPtyHostUnresponsiveEvent: return (this._ptyHostService.onPtyHostUnresponsive || Event.None) as Event<T>;
+ 			case RemoteTerminalChannelEvent.OnPtyHostResponsiveEvent: return (this._ptyHostService.onPtyHostResponsive || Event.None) as Event<T>;
+-			case RemoteTerminalChannelEvent.OnPtyHostRequestResolveVariablesEvent: return (this._ptyHostService.onPtyHostRequestResolveVariables || Event.None) as Event<T>;
+-			case RemoteTerminalChannelEvent.OnProcessDataEvent: return (this._ptyHostService.onProcessData) as Event<T>;
+-			case RemoteTerminalChannelEvent.OnProcessReadyEvent: return (this._ptyHostService.onProcessReady) as Event<T>;
+-			case RemoteTerminalChannelEvent.OnProcessExitEvent: return (this._ptyHostService.onProcessExit) as Event<T>;
+-			case RemoteTerminalChannelEvent.OnProcessReplayEvent: return (this._ptyHostService.onProcessReplay) as Event<T>;
+-			case RemoteTerminalChannelEvent.OnProcessOrphanQuestion: return (this._ptyHostService.onProcessOrphanQuestion) as Event<T>;
+-			case RemoteTerminalChannelEvent.OnExecuteCommand: return (this.onExecuteCommand) as Event<T>;
+-			case RemoteTerminalChannelEvent.OnDidRequestDetach: return (this._ptyHostService.onDidRequestDetach || Event.None) as Event<T>;
+-			case RemoteTerminalChannelEvent.OnDidChangeProperty: return (this._ptyHostService.onDidChangeProperty) as Event<T>;
++			case RemoteTerminalChannelEvent.OnPtyHostRequestResolveVariablesEvent: return Event.filter(this._ptyHostService.onPtyHostRequestResolveVariables || Event.None, e => this._isWorkspaceLeader(e.workspaceId, ctx.clientId)) as Event<T>;
++			case RemoteTerminalChannelEvent.OnProcessDataEvent: return Event.filter(this._ptyHostService.onProcessData, e => this._clientState.isStreaming(e.id, ctx.clientId)) as Event<T>;
++			case RemoteTerminalChannelEvent.OnProcessReadyEvent: return Event.filter(this._ptyHostService.onProcessReady, e => this._startState.target(e.id) === ctx.clientId) as Event<T>;
++			case RemoteTerminalChannelEvent.OnProcessExitEvent: return Event.filter(this._ptyHostService.onProcessExit, e => this._clientState.isAttached(e.id, ctx.clientId)) as Event<T>;
++			case RemoteTerminalChannelEvent.OnProcessReplayEvent: return Event.filter(this._ptyHostService.onProcessReplay, e => this._startState.target(e.id) === ctx.clientId) as Event<T>;
++			case RemoteTerminalChannelEvent.OnProcessOrphanQuestion: return Event.filter(this._ptyHostService.onProcessOrphanQuestion, e => this._clientState.isUiTarget(e.id, ctx.clientId)) as Event<T>;
++			case RemoteTerminalChannelEvent.OnExecuteCommand: return Event.filter(this.onExecuteCommand, e => this._clientState.isUiTarget(e.persistentProcessId, ctx.clientId)) as Event<T>;
++			// Every client of the workspace, not just its leader: the request names an
++			// instance of one particular window, and only the window holding it can
++			// answer. Asking the leader alone leaves a drag between windows unanswered
++			// until the request store times out.
++			case RemoteTerminalChannelEvent.OnDidRequestDetach: return Event.filter(this._ptyHostService.onDidRequestDetach || Event.None, e => this._isWorkspaceClient(e.workspaceId, ctx.clientId)) as Event<T>;
++			case RemoteTerminalChannelEvent.OnDidChangeProperty: return Event.filter(this._ptyHostService.onDidChangeProperty, e => this._startState.target(e.id) ? this._startState.target(e.id) === ctx.clientId : this._clientState.isAttached(e.id, ctx.clientId)) as Event<T>;
++			case RemoteTerminalChannelEvent.OnPersistentTerminalInventoryChange: return this._clientLifetimeEvent(ctx.clientId) as Event<T>;
+ 		}
+ 
+ 		// @ts-expect-error Assert event is the `never` type to ensure all messages are handled
+ 		throw new Error(`IPC Command ${event} not found`);
+ 	}
+ 
++	private _clientLifetimeEvent(clientId: string): Event<{ workspaceId: string }> {
++		return (listener, thisArgs, disposables) => {
++			const subscription = Event.filter(this._onPersistentTerminalInventoryChange.event, e => this._isWorkspaceClient(e.workspaceId, clientId))(listener, thisArgs);
++			const result = combinedDisposable(subscription, toDisposable(() => {
++				this._layouts.delete(clientId);
++				for (const clients of this._workspaceClients.values()) {
++					clients.delete(clientId);
++				}
++				for (const detached of this._clientState.detachClient(clientId)) {
++					if (detached.final) {
++						void this._ptyHostService.detachFromProcess(detached.id);
++					}
++				}
++			}));
++			if (Array.isArray(disposables)) {
++				disposables.push(result);
++			} else {
++				disposables?.add(result);
++			}
++			return result;
++		};
++	}
++
++	// A pty's workspace never changes, so the first answer stands. Re-recording it
++	// from whichever window last asked for a layout would quietly reassign a
++	// terminal that belongs to all of them, and its exit would then be announced
++	// to that one window alone.
++	private _rememberWorkspace(id: number, workspaceId: string): void {
++		if (!this._processWorkspaces.has(id)) {
++			this._processWorkspaces.set(id, { workspaceId, persistent: true });
++		}
++	}
++
++	private _clientLayouts(clientId: string): Map<string, ISetTerminalLayoutInfoArgs> {
++		let byWorkspace = this._layouts.get(clientId);
++		if (!byWorkspace) {
++			byWorkspace = new Map();
++			this._layouts.set(clientId, byWorkspace);
++		}
++		return byWorkspace;
++	}
++
++	private _addWorkspaceClient(workspaceId: string, clientId: string): void {
++		let clients = this._workspaceClients.get(workspaceId);
++		if (!clients) {
++			clients = new Set();
++			this._workspaceClients.set(workspaceId, clients);
++		}
++		clients.add(clientId);
++	}
++
++	private _isWorkspaceClient(workspaceId: string, clientId: string): boolean {
++		return this._workspaceClients.get(workspaceId)?.has(clientId) ?? false;
++	}
++
++	// For requests only one client may answer: a resolve-variables reply settles the
++	// request store, so a second client's is a wasted round trip against a request
++	// that is already answered. First in, first asked.
++	private _isWorkspaceLeader(workspaceId: string, clientId: string): boolean {
++		return this._workspaceClients.get(workspaceId)?.values().next().value === clientId;
++	}
++
+ 	private async _createProcess(uriTransformer: IURITransformer, args: ICreateTerminalProcessArguments): Promise<ICreateTerminalProcessResult> {
+ 		const shellLaunchConfig: IShellLaunchConfig = {
+ 			name: args.shellLaunchConfig.name,
+--- a/lib/vscode/src/vs/server/node/serverServices.ts
++++ b/lib/vscode/src/vs/server/node/serverServices.ts
+@@ -139,7 +139,7 @@ export async function setupServerServices(connectionToken: ServerConnectionToken
+ 	socketServer.registerChannel(ExtensionHostDebugBroadcastChannel.ChannelName, new ExtensionHostDebugBroadcastChannel());
+ 
+ 	// TODO: @Sandy @Joao need dynamic context based router
+-	const router = new StaticRouter<RemoteAgentConnectionContext>(ctx => ctx.clientId === 'renderer');
++	const router = new StaticRouter<RemoteAgentConnectionContext>(ctx => ctx.clientId === 'renderer' || ctx.clientId.startsWith('renderer:'));
+ 
+ 	// Files
+ 	const fileService = disposables.add(new FileService(logService));
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/baseTerminalBackend.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/baseTerminalBackend.ts
+@@ -85,7 +85,7 @@ export abstract class BaseTerminalBackend extends Disposable {
+ 		}));
+ 		this._register(this._ptyHostController.onPtyHostRequestResolveVariables(async e => {
+ 			// Only answer requests for this workspace
+-			if (e.workspaceId !== this._workspaceContextService.getWorkspace().id) {
++			if (e.workspaceId !== this._getWorkspaceId()) {
+ 				return;
+ 			}
+ 			const activeWorkspaceRootUri = historyService.getLastActiveWorkspaceRoot(Schemas.file);
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/remoteTerminalBackend.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/remoteTerminalBackend.ts
+@@ -23,7 +23,7 @@ import { IWorkbenchContribution } from '../../../common/contributions.js';
+ import { BaseTerminalBackend } from './baseTerminalBackend.js';
+ import { RemotePty } from './remotePty.js';
+ import { ITerminalInstanceService } from './terminal.js';
+-import { RemoteTerminalChannelClient, REMOTE_TERMINAL_CHANNEL_NAME } from '../common/remote/remoteTerminalChannel.js';
++import { getRemoteTerminalWorkspaceId, RemoteTerminalChannelClient, REMOTE_TERMINAL_CHANNEL_NAME } from '../common/remote/remoteTerminalChannel.js';
+ import { ICompleteTerminalConfiguration, ITerminalConfiguration, TERMINAL_CONFIG_SECTION } from '../common/terminal.js';
+ import { TerminalStorageKeys } from '../common/terminalStorageKeys.js';
+ import { IConfigurationResolverService } from '../../../services/configurationResolver/common/configurationResolver.js';
+@@ -52,9 +52,15 @@ export class RemoteTerminalBackendContribution implements IWorkbenchContribution
+ 
+ class RemoteTerminalBackend extends BaseTerminalBackend implements ITerminalBackend {
+ 	private readonly _ptys: Map<number, RemotePty> = new Map();
++	private readonly _onDidRequestTerminalSync = this._register(new Emitter<void>());
++	readonly onDidRequestTerminalSync = this._onDidRequestTerminalSync.event;
+ 
+ 	private readonly _whenConnected = new DeferredPromise<void>();
+ 	get whenReady(): Promise<void> { return this._whenConnected.p; }
++
++	protected override _getWorkspaceId(): string {
++		return getRemoteTerminalWorkspaceId(this._workspaceContextService.getWorkspace());
++	}
+ 	setReady(): void { this._whenConnected.complete(); }
+ 
+ 	private readonly _onDidRequestDetach = this._register(new Emitter<{ requestId: number; workspaceId: string; instanceId: number }>());
+@@ -87,9 +93,10 @@ class RemoteTerminalBackend extends BaseTerminalBackend implements ITerminalBack
+ 			}
+ 		}));
+ 		this._register(this._remoteTerminalChannel.onProcessOrphanQuestion(e => this._ptys.get(e.id)?.handleOrphanQuestion()));
+-		this._register(this._remoteTerminalChannel.onDidRequestDetach(e => this._onDidRequestDetach.fire(e)));
++		this._register(this._remoteTerminalChannel.onDidRequestDetach(e => this._onDidRequestDetach.fire({ ...e, workspaceId: this._workspaceContextService.getWorkspace().id })));
+ 		this._register(this._remoteTerminalChannel.onProcessReady(e => this._ptys.get(e.id)?.handleReady(e.event)));
+ 		this._register(this._remoteTerminalChannel.onDidChangeProperty(e => this._ptys.get(e.id)?.handleDidChangeProperty(e.property)));
++		this._register(this._remoteTerminalChannel.onPersistentTerminalInventoryChange(() => this._onDidRequestTerminalSync.fire()));
+ 		this._register(this._remoteTerminalChannel.onProcessExit(e => {
+ 			const pty = this._ptys.get(e.id);
+ 			if (pty) {
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalProcessManager.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalProcessManager.ts
+@@ -293,6 +293,9 @@ export class TerminalProcessManager extends Disposable implements ITerminalProce
+ 					} else {
+ 						// Warn and just create a new terminal if attach failed for some reason
+ 						this._logService.warn(`Attach to process failed for terminal`, shellLaunchConfig.attachPersistentProcess);
++						if (shellLaunchConfig.attachPersistentProcess.failOnAttachError) {
++							return { message: `Could not find pty with id ${shellLaunchConfig.attachPersistentProcess.id} to synchronize` };
++						}
+ 						shellLaunchConfig.attachPersistentProcess = undefined;
+ 					}
+ 				}
+@@ -342,6 +345,9 @@ export class TerminalProcessManager extends Disposable implements ITerminalProce
+ 					} else {
+ 						// Warn and just create a new terminal if attach failed for some reason
+ 						this._logService.warn(`Attach to process failed for terminal`, shellLaunchConfig.attachPersistentProcess);
++						if (shellLaunchConfig.attachPersistentProcess.failOnAttachError) {
++							return { message: `Could not find pty with id ${shellLaunchConfig.attachPersistentProcess.id} to synchronize` };
++						}
+ 						shellLaunchConfig.attachPersistentProcess = undefined;
+ 					}
+ 				}
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalService.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalService.ts
+@@ -82,6 +82,8 @@ export class TerminalService extends Disposable implements ITerminalService {
+ 	private _terminalCountContextKey: IContextKey<number>;
+ 	private _nativeDelegate?: ITerminalServiceNativeDelegate;
+ 	private _shutdownWindowCount?: number;
++	private _remoteTerminalSync: Promise<void> | undefined;
++	private _remoteTerminalSyncRequested = false;
+ 
+ 	get isProcessSupportRegistered(): boolean { return !!this._processSupportContextKey.get(); }
+ 
+@@ -458,13 +460,12 @@ export class TerminalService extends Disposable implements ITerminalService {
+ 		if (!backend) {
+ 			return;
+ 		}
+-		mark('code/terminal/willGetTerminalLayoutInfo');
+-		const layoutInfo = await backend.getTerminalLayoutInfo();
+-		mark('code/terminal/didGetTerminalLayoutInfo');
++		await this._syncRemoteTerminals(backend, true);
++		if (backend.onDidRequestTerminalSync) {
++			this._register(backend.onDidRequestTerminalSync(() => void this._queueRemoteTerminalSync(backend).catch(error => this._logService.error('Failed to synchronize remote terminals', error))));
++			void this._queueRemoteTerminalSync(backend).catch(error => this._logService.error('Failed to synchronize remote terminals', error));
++		}
+ 		backend.reduceConnectionGraceTime();
+-		mark('code/terminal/willRecreateTerminalGroups');
+-		await this._recreateTerminalGroups(layoutInfo);
+-		mark('code/terminal/didRecreateTerminalGroups');
+ 		// now that terminals have been restored,
+ 		// attach listeners to update remote when terminals are changed
+ 		this._attachProcessLayoutListeners();
+@@ -472,6 +473,48 @@ export class TerminalService extends Disposable implements ITerminalService {
+ 		this._logService.trace('Reconnected to remote terminals');
+ 	}
+ 
++	private _queueRemoteTerminalSync(backend: ITerminalBackend): Promise<void> {
++		this._remoteTerminalSyncRequested = true;
++		if (!this._remoteTerminalSync) {
++			this._remoteTerminalSync = (async () => {
++				while (this._remoteTerminalSyncRequested) {
++					this._remoteTerminalSyncRequested = false;
++					await this._syncRemoteTerminals(backend);
++				}
++			})().finally(() => this._remoteTerminalSync = undefined);
++		}
++		return this._remoteTerminalSync;
++	}
++
++	private async _syncRemoteTerminals(backend: ITerminalBackend, initial: boolean = false): Promise<void> {
++		mark('code/terminal/willGetTerminalLayoutInfo');
++		const layoutInfo = await backend.getTerminalLayoutInfo();
++		mark('code/terminal/didGetTerminalLayoutInfo');
++		if (!layoutInfo) {
++			return;
++		}
++		// Never recreate a terminal we already have an instance for. createTerminal resolves
++		// before its attach reaches the pty host, so the server's isOrphan lags a just-created
++		// instance and a coalesced re-sync would otherwise double-create it. this.instances
++		// updates synchronously at creation, so it is the authoritative "already owned" signal.
++		const owned = new Set(this.instances.map(instance => instance.shellLaunchConfig.attachPersistentProcess?.id ?? instance.persistentProcessId).filter((id): id is number => id !== undefined));
++		const background = (layoutInfo.background ?? []).filter(terminal => !(terminal && owned.has(terminal.id)));
++		const layout: ITerminalsLayoutInfo = {
++			tabs: layoutInfo.tabs.map(tab => ({ ...tab, terminals: tab.terminals.filter(terminal => !(terminal.terminal && owned.has(terminal.terminal.id))) })).filter(tab => tab.terminals.length > 0),
++			background
++		};
++		mark('code/terminal/willRecreateTerminalGroups');
++		const groups = this._recreateTerminalGroups(layout);
++		if (initial) {
++			this._reconnectedTerminalGroups = groups;
++		}
++		await Promise.all([
++			groups,
++			this._reviveBackgroundTerminalInstances(background.filter(terminal => terminal?.isOrphan))
++		]);
++		mark('code/terminal/didRecreateTerminalGroups');
++	}
++
+ 	private async _reconnectToLocalTerminals(): Promise<void> {
+ 		const localBackend = await this._terminalInstanceService.getBackend();
+ 		if (!localBackend) {
+@@ -527,7 +570,7 @@ export class TerminalService extends Disposable implements ITerminalService {
+ 			if (!attachPersistentProcess) {
+ 				continue;
+ 			}
+-			const instance = await this.createTerminal({ config: { attachPersistentProcess, hideFromUser: true, forcePersist: true }, location: TerminalLocation.Panel });
++			const instance = await this.createTerminal({ config: { attachPersistentProcess: { ...attachPersistentProcess, failOnAttachError: true }, hideFromUser: true, forcePersist: true }, location: TerminalLocation.Panel });
+ 			instances.push(instance);
+ 		}
+ 		return instances;
+@@ -542,7 +585,7 @@ export class TerminalService extends Disposable implements ITerminalService {
+ 			}
+ 			mark(`code/terminal/willRecreateTerminal/${attachPersistentProcess.id}-${attachPersistentProcess.pid}`);
+ 			lastInstance = this.createTerminal({
+-				config: { attachPersistentProcess },
++				config: { attachPersistentProcess: { ...attachPersistentProcess, failOnAttachError: true } },
+ 				location: lastInstance ? { parentTerminal: lastInstance } : TerminalLocation.Panel
+ 			});
+ 			lastInstance.then(() => mark(`code/terminal/didRecreateTerminal/${attachPersistentProcess.id}-${attachPersistentProcess.pid}`));
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/common/remote/remoteTerminalChannel.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/common/remote/remoteTerminalChannel.ts
+@@ -4,12 +4,14 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ import { Event } from '../../../../../base/common/event.js';
++import { hash } from '../../../../../base/common/hash.js';
++import { terminalWorkspaceId } from './terminalWorkspaceId.js';
+ import { URI, UriComponents } from '../../../../../base/common/uri.js';
+ import { IChannel } from '../../../../../base/parts/ipc/common/ipc.js';
+ import { IWorkbenchConfigurationService } from '../../../../services/configuration/common/configuration.js';
+ import { IRemoteAuthorityResolverService } from '../../../../../platform/remote/common/remoteAuthorityResolver.js';
+ import { IWorkbenchEnvironmentService } from '../../../../services/environment/common/environmentService.js';
+-import { IWorkspaceContextService } from '../../../../../platform/workspace/common/workspace.js';
++import { IWorkspace, IWorkspaceContextService } from '../../../../../platform/workspace/common/workspace.js';
+ import { serializeEnvironmentDescriptionMap, serializeEnvironmentVariableCollection } from '../../../../../platform/terminal/common/environmentVariableShared.js';
+ import { IConfigurationResolverService } from '../../../../services/configurationResolver/common/configurationResolver.js';
+ import { SideBySideEditor, EditorResourceAccessor } from '../../../../common/editor.js';
+@@ -55,6 +57,10 @@ export interface ICreateTerminalProcessArguments {
+ 	resolverEnv: { [key: string]: string | null } | undefined;
+ }
+ 
++export function getRemoteTerminalWorkspaceId(workspace: IWorkspace): string {
++	return terminalWorkspaceId(workspace, hash);
++}
++
+ export interface ICreateTerminalProcessResult {
+ 	persistentTerminalId: number;
+ 	resolvedShellLaunchConfig: IShellLaunchConfigDto;
+@@ -100,6 +106,13 @@ export class RemoteTerminalChannelClient implements IPtyHostController {
+ 	get onDidChangeProperty(): Event<{ id: number; property: IProcessProperty }> {
+ 		return this._channel.listen<{ id: number; property: IProcessProperty }>(RemoteTerminalChannelEvent.OnDidChangeProperty);
+ 	}
++	private get _workspaceId(): string {
++		return getRemoteTerminalWorkspaceId(this._workspaceContextService.getWorkspace());
++	}
++
++	get onPersistentTerminalInventoryChange(): Event<{ workspaceId: string }> {
++		return this._channel.listen<{ workspaceId: string }>(RemoteTerminalChannelEvent.OnPersistentTerminalInventoryChange);
++	}
+ 
+ 	constructor(
+ 		private readonly _remoteAuthority: string,
+@@ -176,7 +189,7 @@ export class RemoteTerminalChannelClient implements IPtyHostController {
+ 			resolvedVariables,
+ 			envVariableCollections,
+ 			shellLaunchConfig,
+-			workspaceId: workspace.id,
++			workspaceId: this._workspaceId,
+ 			workspaceName: this._labelService.getWorkspaceLabel(workspace),
+ 			workspaceFolders,
+ 			activeWorkspaceFolder,
+@@ -191,8 +204,8 @@ export class RemoteTerminalChannelClient implements IPtyHostController {
+ 		return await this._channel.call<ICreateTerminalProcessResult>(RemoteTerminalChannelRequest.CreateProcess, args);
+ 	}
+ 
+-	requestDetachInstance(workspaceId: string, instanceId: number): Promise<IProcessDetails | undefined> {
+-		return this._channel.call(RemoteTerminalChannelRequest.RequestDetachInstance, [workspaceId, instanceId]);
++	requestDetachInstance(_workspaceId: string, instanceId: number): Promise<IProcessDetails | undefined> {
++		return this._channel.call(RemoteTerminalChannelRequest.RequestDetachInstance, [this._workspaceId, instanceId]);
+ 	}
+ 	acceptDetachInstanceReply(requestId: number, persistentProcessId: number): Promise<void> {
+ 		return this._channel.call(RemoteTerminalChannelRequest.AcceptDetachInstanceReply, [requestId, persistentProcessId]);
+@@ -264,7 +277,7 @@ export class RemoteTerminalChannelClient implements IPtyHostController {
+ 		return this._channel.call(RemoteTerminalChannelRequest.GetDefaultSystemShell, [osOverride]);
+ 	}
+ 	getProfiles(profiles: unknown, defaultProfile: unknown, includeDetectedProfiles?: boolean): Promise<ITerminalProfile[]> {
+-		return this._channel.call(RemoteTerminalChannelRequest.GetProfiles, [this._workspaceContextService.getWorkspace().id, profiles, defaultProfile, includeDetectedProfiles]);
++		return this._channel.call(RemoteTerminalChannelRequest.GetProfiles, [this._workspaceId, profiles, defaultProfile, includeDetectedProfiles]);
+ 	}
+ 	acceptPtyHostResolvedVariables(requestId: number, resolved: string[]): Promise<void> {
+ 		return this._channel.call(RemoteTerminalChannelRequest.AcceptPtyHostResolvedVariables, [requestId, resolved]);
+@@ -279,9 +292,8 @@ export class RemoteTerminalChannelClient implements IPtyHostController {
+ 	}
+ 
+ 	setTerminalLayoutInfo(layout?: ITerminalsLayoutInfoById): Promise<void> {
+-		const workspace = this._workspaceContextService.getWorkspace();
+ 		const args: ISetTerminalLayoutInfoArgs = {
+-			workspaceId: workspace.id,
++			workspaceId: this._workspaceId,
+ 			tabs: layout ? layout.tabs : [],
+ 			background: layout ? layout.background : null
+ 		};
+@@ -305,15 +317,14 @@ export class RemoteTerminalChannelClient implements IPtyHostController {
+ 	}
+ 
+ 	getTerminalLayoutInfo(): Promise<ITerminalsLayoutInfo | undefined> {
+-		const workspace = this._workspaceContextService.getWorkspace();
+ 		const args: IGetTerminalLayoutInfoArgs = {
+-			workspaceId: workspace.id,
++			workspaceId: this._workspaceId,
+ 		};
+ 		return this._channel.call<ITerminalsLayoutInfo>(RemoteTerminalChannelRequest.GetTerminalLayoutInfo, args);
+ 	}
+ 
+-	reviveTerminalProcesses(workspaceId: string, state: ISerializedTerminalState[], dateTimeFormatLocate: string): Promise<void> {
+-		return this._channel.call(RemoteTerminalChannelRequest.ReviveTerminalProcesses, [workspaceId, state, dateTimeFormatLocate]);
++	reviveTerminalProcesses(_workspaceId: string, state: ISerializedTerminalState[], dateTimeFormatLocate: string): Promise<void> {
++		return this._channel.call(RemoteTerminalChannelRequest.ReviveTerminalProcesses, [this._workspaceId, state, dateTimeFormatLocate]);
+ 	}
+ 
+ 	getRevivedPtyNewId(id: number): Promise<number | undefined> {
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/common/remote/terminal.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/common/remote/terminal.ts
+@@ -55,6 +55,7 @@ export const enum RemoteTerminalChannelEvent {
+ 	OnExecuteCommand = '$onExecuteCommand',
+ 	OnDidRequestDetach = '$onDidRequestDetach',
+ 	OnDidChangeProperty = '$onDidChangeProperty',
++	OnPersistentTerminalInventoryChange = '$onPersistentTerminalInventoryChange',
+ }
+ 
+ export const enum RemoteTerminalChannelRequest {
+--- a/lib/vscode/src/vs/workbench/services/remote/common/abstractRemoteAgentService.ts
++++ b/lib/vscode/src/vs/workbench/services/remote/common/abstractRemoteAgentService.ts
+@@ -20,6 +20,7 @@ import { ITelemetryData, TelemetryLevel } from '../../../../platform/telemetry/c
+ import { IProductService } from '../../../../platform/product/common/productService.js';
+ import { IUserDataProfileService } from '../../userDataProfile/common/userDataProfile.js';
+ import { IRemoteSocketFactoryService } from '../../../../platform/remote/common/remoteSocketFactoryService.js';
++import { generateUuid } from '../../../../base/common/uuid.js';
+ 
+ export abstract class AbstractRemoteAgentService extends Disposable implements IRemoteAgentService {
+ 
+@@ -156,6 +157,7 @@ class RemoteAgentConnection extends Disposable implements IRemoteAgentConnection
+ 	readonly remoteAuthority: string;
+ 	private _connection: Promise<Client<RemoteAgentConnectionContext>> | null;
+ 	private _managementConnection: ManagementPersistentConnection | null = null;
++	private readonly _clientId = `renderer:${generateUuid()}`;
+ 
+ 	private _initialConnectionMs: number | undefined;
+ 
+@@ -240,7 +242,7 @@ class RemoteAgentConnection extends Disposable implements IRemoteAgentConnection
+ 		let connection: ManagementPersistentConnection;
+ 		const start = Date.now();
+ 		try {
+-			connection = this._register(await connectRemoteAgentManagement(options, this.remoteAuthority, `renderer`));
++			connection = this._register(await connectRemoteAgentManagement(options, this.remoteAuthority, this._clientId));
+ 			this._managementConnection = connection;
+ 		} finally {
+ 			this._initialConnectionMs = Date.now() - start;

@@ -1,0 +1,476 @@
+What a fresh Composery instance looks like before anyone configures it.
+
+Every hunk here is a first-run default, expressed in upstream's own state so a
+user's own choice simply replaces it and then persists:
+
+- Views hidden until opted into (outline, timeline, npm, scm repositories,
+  recommended extensions) and containers left off their bar (run and debug,
+  output, debug console, plus the accounts entry). A hidden view is
+  hideByDefault and an absent container is merely unpinned, so the bar's context
+  menu puts either back, and nothing is re-evaluated against the id lists once
+  the user has seen the container. Container LOCATIONS are deliberately
+  untouched: moving scm/markers/extensions/terminal between bars is a layout
+  opinion rather than a default, and it lived in per-browser storage where it
+  could not have survived a second device anyway.
+- Welcome: the Coder promo block becomes the "Set up an AI coding agent" card
+  grid (composery.installAgent, via the composery-agents builtin), keeping the
+  getting-started override gate. Welcome slides scroll natively on touch - never
+  Gesture-target them, because a registered target preventDefault()s touchend
+  and kills every plain click in the page.
+- Watermark: workspace tips reduced to commands/goto/recent.
+- Extensions view: the default "Popular" list becomes "Themes"
+  (category:themes @popular) - themes are the one kind of extension every fresh
+  instance wants.
+- Menubar: web-navigation actions belong to the File root, not to every nested
+  submenu as well.
+- Terminal: 4px top and bottom padding (TerminalInstance._getDimension subtracts
+  computed padding, so this reserves real rows rather than clipping them), and
+  the inline view action hidden by default.
+- The insecure-context notice can be dismissed for good.
+
+--- a/lib/vscode/src/vs/workbench/browser/client.ts
++++ b/lib/vscode/src/vs/workbench/browser/client.ts
+@@ -83,6 +83,10 @@ export class CodeServerClient extends Disposable {
+ 						},
+ 					],
+ 				},
++				neverShowAgain: {
++					id: 'composery.insecureContextNotification',
++					isSecondary: false,
++				},
+ 			});
+ 		}
+ 
+--- a/lib/vscode/src/vs/workbench/browser/parts/editor/editorGroupWatermark.ts
++++ b/lib/vscode/src/vs/workbench/browser/parts/editor/editorGroupWatermark.ts
+@@ -57,7 +57,9 @@ const emptyWindowEntries: WatermarkEntry[] = coalesce([
+ ]);
+ 
+ const workspaceEntries: WatermarkEntry[] = [
+-	...baseEntries,
++	showCommands,
++	gotoFile,
++	openRecent,
+ ];
+ 
+ const otherEntries: WatermarkEntry[] = [
+--- a/lib/vscode/src/vs/workbench/browser/parts/globalCompositeBar.ts
++++ b/lib/vscode/src/vs/workbench/browser/parts/globalCompositeBar.ts
+@@ -742,7 +742,8 @@ function simpleActivityContextMenuActions(storageService: IStorageService, isAcc
+ }
+ 
+ export function isAccountsActionVisible(storageService: IStorageService): boolean {
+-	return storageService.getBoolean(AccountsActivityActionViewItem.ACCOUNTS_VISIBILITY_PREFERENCE_KEY, StorageScope.PROFILE, true);
++	// Composery: hide the Accounts entry by default (overridable by the user).
++	return storageService.getBoolean(AccountsActivityActionViewItem.ACCOUNTS_VISIBILITY_PREFERENCE_KEY, StorageScope.PROFILE, false);
+ }
+ 
+ function setAccountsActionVisible(storageService: IStorageService, visible: boolean) {
+--- a/lib/vscode/src/vs/workbench/browser/parts/paneCompositeBar.ts
++++ b/lib/vscode/src/vs/workbench/browser/parts/paneCompositeBar.ts
+@@ -32,6 +32,13 @@
+ import { IConfigurationService } from '../../../platform/configuration/common/configuration.js';
+ import { IViewsService } from '../../services/views/common/viewsService.js';
+ 
++// Composery: view containers left off their bar by default - see onDidRegisterViewContainers.
++const COMPOSERY_DEFAULT_HIDDEN_CONTAINER_IDS = new Set<string>([
++	'workbench.view.debug',
++	'workbench.panel.output',
++	'workbench.panel.repl',
++]);
++
+ interface IPlaceholderViewContainer {
+ 	readonly id: string;
+ 	readonly name?: string;
+@@ -341,7 +348,11 @@
+ 
+ 			// Pin it by default if it is new
+ 			const cachedViewContainer = this.cachedViewContainers.filter(({ id }) => id === viewContainer.id)[0];
+-			if (!cachedViewContainer) {
++			// Composery: ours are left unpinned on that first registration instead. Unpinned is
++			// exactly the state the bar's own context menu toggles, so re-showing one persists
++			// like any container the user unpinned by hand - and because this runs only when the
++			// container is new to the profile, the list is never consulted again afterwards.
++			if (!cachedViewContainer && !COMPOSERY_DEFAULT_HIDDEN_CONTAINER_IDS.has(viewContainer.id)) {
+ 				this.compositeBar.pin(viewContainer.id);
+ 			}
+ 
+--- a/lib/vscode/src/vs/workbench/browser/parts/titlebar/menubarControl.ts
++++ b/lib/vscode/src/vs/workbench/browser/parts/titlebar/menubarControl.ts
+@@ -549,7 +549,7 @@ export class CustomMenubarControl extends MenubarControl {
+ 		}
+ 
+ 		// Update the menu actions
+-		const updateActions = (menuActions: readonly IAction[], target: IAction[], topLevelTitle: string, store: DisposableStore) => {
++		const updateActions = (menuActions: readonly IAction[], target: IAction[], topLevelTitle: string, store: DisposableStore, includeWebNavigation = true) => {
+ 			target.splice(0);
+ 
+ 			for (const menuItem of menuActions) {
+@@ -565,7 +565,8 @@ export class CustomMenubarControl extends MenubarControl {
+ 
+ 					if (menuItem instanceof SubmenuItemAction) {
+ 						const submenuActions: SubmenuAction[] = [];
+-						updateActions(menuItem.actions, submenuActions, topLevelTitle, store);
++						// Web navigation actions belong to the File root, not every nested submenu.
++						updateActions(menuItem.actions, submenuActions, topLevelTitle, store, false);
+ 
+ 						if (submenuActions.length > 0) {
+ 							target.push(new SubmenuAction(menuItem.id, mnemonicMenuLabel(title), submenuActions));
+@@ -585,7 +586,7 @@ export class CustomMenubarControl extends MenubarControl {
+ 			}
+ 
+ 			// Append web navigation menu items to the file menu when not compact
+-			if (topLevelTitle === 'File' && this.currentCompactMenuMode === undefined) {
++			if (includeWebNavigation && topLevelTitle === 'File' && this.currentCompactMenuMode === undefined) {
+ 				const webActions = this.getWebNavigationActions();
+ 				if (webActions.length) {
+ 					target.push(...webActions);
+--- a/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionsViewlet.ts
++++ b/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionsViewlet.ts
+@@ -260,7 +260,7 @@ export class ExtensionsViewletViewsContribution extends Disposable implements IW
+ 		 */
+ 		viewDescriptors.push({
+ 			id: 'workbench.views.extensions.popular',
+-			name: localize2('popularExtensions', "Popular"),
++			name: localize2('themes', "Themes"),
+ 			ctorDescriptor: new SyncDescriptor(DefaultPopularExtensionsView, [{ hideBadge: true }]),
+ 			when: ContextKeyExpr.and(DefaultViewsContext, ContextKeyExpr.not('hasInstalledExtensions'), CONTEXT_HAS_GALLERY),
+ 			weight: 60,
+--- a/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionsViews.ts
++++ b/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionsViews.ts
+@@ -1296,7 +1296,7 @@ export class ExtensionsListView extends AbstractExtensionsListView<IExtension> {
+ export class DefaultPopularExtensionsView extends ExtensionsListView {
+ 
+ 	override async show(): Promise<IPagedModel<IExtension>> {
+-		const query = this.extensionManagementServerService.webExtensionManagementServer && !this.extensionManagementServerService.localExtensionManagementServer && !this.extensionManagementServerService.remoteExtensionManagementServer ? '@web' : '';
++		const query = this.extensionManagementServerService.webExtensionManagementServer && !this.extensionManagementServerService.localExtensionManagementServer && !this.extensionManagementServerService.remoteExtensionManagementServer ? '@web' : 'category:themes @popular';
+ 		return super.show(query);
+ 	}
+ 
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/media/terminal.css
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/media/terminal.css
+@@ -75,6 +75,11 @@
+ .monaco-workbench .xterm {
+ 	/* All terminals have at least 20px left padding for the gutter */
+ 	padding-left: 20px;
++	/* Composery: breathing room so the first and last rows do not touch the pane
++	 * edges - TerminalInstance._getDimension subtracts computed padding from the
++	 * row fit, so this reserves real space instead of clipping the grid. */
++	padding-top: 4px;
++	padding-bottom: 4px;
+ }
+ 
+ .monaco-workbench .xterm .xterm-scrollable-element {
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalMenus.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalMenus.ts
+@@ -445,7 +445,8 @@ export function setupTerminalMenus(): void {
+ 					},
+ 					group: 'navigation',
+ 					order: 2,
+-					when: TerminalContextKeys.shouldShowViewInlineActions
++					when: TerminalContextKeys.shouldShowViewInlineActions,
++					isHiddenByDefault: true
+ 				}
+ 			},
+ 			{
+--- a/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts
++++ b/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/gettingStarted.ts
+@@ -862,6 +862,15 @@ export class GettingStartedPage extends EditorPane {
+ 		this.detailsScrollbar.value?.scanDomNode();
+ 	}
+ 
++	// Touch panning scrolls these DomScrollableElement contents natively (see the touch
++	// media rules in gettingStarted.css); mirror the position back into the widget so
++	// wheel and programmatic scrolling continue from the same spot.
++	private syncNativeScroll(element: HTMLElement, getScrollbar: () => DomScrollableElement | undefined) {
++		return addDisposableListener(element, 'scroll', () => {
++			getScrollbar()?.setScrollPosition({ scrollTop: element.scrollTop, scrollLeft: element.scrollLeft });
++		});
++	}
++
+ 	private updateMediaSourceForColorMode(element: HTMLImageElement, sources: { hcDark: URI; hcLight: URI; dark: URI; light: URI }) {
+ 		const themeType = this.themeService.getColorTheme().type;
+ 		const src = sources[themeType].toString(true).replace(/ /g, '%20');
+@@ -882,8 +891,10 @@ export class GettingStartedPage extends EditorPane {
+ 		this.detailsPageScrollbar = this._register(new DomScrollableElement(this.stepsContent, { className: 'full-height-scrollable', vertical: ScrollbarVisibility.Hidden }));
+ 		this.categoriesPageScrollbar = this._register(new DomScrollableElement(this.categoriesSlide, { className: 'full-height-scrollable categoriesScrollbar', vertical: ScrollbarVisibility.Hidden }));
+ 
+-		this.stepsSlide.appendChild(this.detailsPageScrollbar.getDomNode());
++		this._register(this.syncNativeScroll(this.categoriesSlide, () => this.categoriesPageScrollbar));
++		this._register(this.syncNativeScroll(this.stepsContent, () => this.detailsPageScrollbar));
+ 
++		this.stepsSlide.appendChild(this.detailsPageScrollbar.getDomNode());
+ 		const gettingStartedPage = $('.gettingStarted', {}, this.categoriesPageScrollbar.getDomNode(), this.stepsSlide);
+ 		this.container.appendChild(gettingStartedPage);
+ 
+@@ -930,66 +941,111 @@ export class GettingStartedPage extends EditorPane {
+ 
+ 		let gettingStartedCoder: HTMLElement = $('.header', {});
+ 		if (this.contextService.contextMatchesRules(IsEnabledCoderGettingStarted)) {
+-			gettingStartedCoder = $('.gettingStartedCategory', {},
++			const composeryAgents = [
++				{ id: 'claude-code', name: 'Claude Code', tagline: 'Anthropic' },
++				{ id: 'codex', name: 'Codex', tagline: 'OpenAI' },
++				{ id: 'opencode', name: 'OpenCode', tagline: 'Anomaly' },
++				{ id: 'pi', name: 'Pi', tagline: 'Earendil Works' },
++				{ id: 'hermes', name: 'Hermes', tagline: 'Nous Research' },
++			];
++			const moreAgents = $('button.composery-agent', {
++				title: 'Set up more agents',
++				style: [
++					'display: flex',
++					'align-items: center',
++					'gap: 12px',
++					'padding: 12px 14px',
++					'border-radius: 8px',
++					'border: 1px solid var(--vscode-widget-border, rgba(127, 127, 127, 0.25))',
++					'cursor: pointer',
++					'color: inherit',
++					'background: transparent',
++					'font: inherit',
++					'text-align: left',
++				].join(';'),
++			},
++				$('span', {
++					class: ThemeIcon.asClassName(Codicon.ellipsis),
++					style: [
++						'width: 28px',
++						'font-size: 24px',
++						'flex-shrink: 0',
++						'color: var(--vscode-textLink-foreground)',
++					].join(';'),
++				}),
++				$('span', {
++					style: 'display: flex;flex-direction: column;min-width: 0;',
++				},
++					$('span', { style: 'font-weight: 600;' }, 'More agents…'),
++					$('span', { style: 'font-size: 12px;opacity: 0.7;' }, 'Browse 10 more choices'),
++				),
++			);
++			moreAgents.addEventListener('click', () => {
++				this.commandService.executeCommand('composery.installAgent', 'additional');
++			});
++			gettingStartedCoder = $('.gettingStartedCategory.composery-agent-category', {},
+ 				$('h2', {
+-					style: 'margin-bottom: 12px',
+-				}, 'Next Up'),
+-				$('a', {
+-					href: 'https://cdr.co/code-server-to-coder',
+-					target: '_blank',
++					style: 'margin: 0 0 4px;font-weight: 600;',
++				}, 'Set up an AI coding agent'),
++				$('p', {
++					style: 'margin: 0 0 16px;font-size: 13px;opacity: 0.7;',
++				}, 'Click one to run its official latest setup command in a new terminal.'),
++				$('.composery-agent-grid', {
++					style: [
++						'display: grid',
++						'grid-template-columns: repeat(2, minmax(0, 1fr))',
++						'gap: 10px',
++						'max-width: 560px',
++					].join(';'),
+ 				},
+-					$('button', {
+-						style: [
+-							'padding: 10px 16px	',
+-							'border-radius: 4px',
+-							'background: linear-gradient(94.04deg, #7934DA 0%, #4D52E0 101.2%)',
+-							'color: white',
+-							'overflow: hidden',
+-							'margin-right: 14px',
+-						].join(';'),
+-					},
+-					$('h3', {
+-						style: [
+-							'margin: 0px 0px 6px',
+-							'font-weight: 500',
+-						].join(';'),
+-					}, 'Deploy code-server for your team'),
+-					$('p', {
+-						style: [
+-							'margin: 0',
+-							'font-size: 13px',
+-							'color: #dcdee2',
+-						].join(';'),
+-					}, 'Provision software development environments on your infrastructure with Coder.'),
+-					$('p', {
+-						style: [
+-							'margin-top: 8px',
+-							'font-size: 13px',
+-							'color: #dcdee2',
+-						].join(';'),
+-					}, 'Coder is a self-service portal which provisions via Terraform—Linux, macOS, Windows, x86, ARM, and, of course, Kubernetes based infrastructure.'),
+-					$('p', {
+-						style: [
+-							'margin: 0',
+-							'margin-top: 8px',
+-							'font-size: 13px',
+-							'display: flex',
+-							'align-items: center',
+-						].join(';'),
+-					}, 'Get started ', $('span', {
+-						class: ThemeIcon.asClassName(Codicon.arrowRight),
+-						style: [
+-							'color: white',
+-							'margin-left: 8px',
+-						].join(';'),
+-					})),
+-					$('img', {
+-						src: './_static/src/browser/media/templates.png',
+-						style: [
+-							'margin-bottom: -65px',
+-						].join(';'),
++					...composeryAgents.map(agent => {
++						const iconUrl = `url(./_static/src/browser/media/agents/${agent.id}.svg) center / contain no-repeat`;
++						const card = $('.composery-agent', {
++							role: 'button',
++							tabindex: '0',
++							title: `Set up ${agent.name}`,
++							style: [
++								'display: flex',
++								'align-items: center',
++								'gap: 12px',
++								'padding: 12px 14px',
++								'border-radius: 8px',
++								'border: 1px solid var(--vscode-widget-border, rgba(127, 127, 127, 0.25))',
++								'cursor: pointer',
++								'color: inherit',
++							].join(';'),
++						},
++							$('.composery-agent-icon', {
++								style: [
++									'width: 28px',
++									'height: 28px',
++									'flex-shrink: 0',
++									`-webkit-mask: ${iconUrl}`,
++									`mask: ${iconUrl}`,
++									'background-color: var(--vscode-textLink-foreground)',
++								].join(';'),
++							}),
++							$('span', {
++								style: 'display: flex;flex-direction: column;min-width: 0;',
++							},
++								$('span', { style: 'font-weight: 600;overflow: hidden;text-overflow: ellipsis;white-space: nowrap;' }, agent.name),
++								$('span', { style: 'font-size: 12px;opacity: 0.7;overflow: hidden;text-overflow: ellipsis;white-space: nowrap;' }, agent.tagline),
++							),
++						);
++						const launch = () => this.commandService.executeCommand('composery.installAgent', agent.id);
++						card.addEventListener('click', e => {
++							e.preventDefault();
++							launch();
++						});
++						card.addEventListener('keydown', e => {
++							if (e.key === 'Enter' || e.key === ' ') {
++								e.preventDefault();
++								launch();
++							}
++						});
++						return card;
+ 					}),
++					moreAgents,
+-					),
+ 				),
+ 			);
+ 		}
+@@ -1703,6 +1760,7 @@ export class GettingStartedPage extends EditorPane {
+ 		);
+ 		this.detailsScrollbar.value = new DomScrollableElement(stepsContainer, { className: 'steps-container' });
+ 		const stepListComponent = this.detailsScrollbar.value.getDomNode();
++		this.detailsPageDisposables.add(this.syncNativeScroll(stepsContainer, () => this.detailsScrollbar.value));
+ 
+ 		const categoryFooter = $('.getting-started-footer');
+ 		if (this.editorInput.showTelemetryNotice && getTelemetryLevel(this.configurationService) !== TelemetryLevel.NONE && this.productService.enableTelemetry) {
+--- a/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/media/gettingStarted.css
++++ b/lib/vscode/src/vs/workbench/contrib/welcomeGettingStarted/browser/media/gettingStarted.css
+@@ -1147,3 +1147,40 @@
+ .monaco-workbench .part.editor > .content .gettingStartedContainer .gettingStartedSlide .getting-started-checkbox {
+ 	border-color: var(--vscode-checkbox-border) !important;
+ }
++
++/* Composery: a finger pans the welcome scrollables natively. DomScrollableElement scrolls
++ * the real element (scrollTop) and reads it back on scanDomNode, and gettingStarted.ts
++ * mirrors native scrolls into the widget - so opting the elements into native overflow is
++ * the whole touch story, and every click in the page stays a plain browser click (a
++ * Gesture-target here suppressed them all). !important beats the widget's inline
++ * `overflow: hidden`; the custom (hidden) scrollbar stays the only visible one. */
++@media (hover: none), (any-pointer: coarse) {
++	.monaco-workbench .part.editor > .content .gettingStartedContainer .gettingStartedSlideCategories,
++	.monaco-workbench .part.editor > .content .gettingStartedContainer .gettingStartedDetailsContent,
++	.monaco-workbench .part.editor > .content .gettingStartedContainer .getting-started-detail-container {
++		overflow-y: auto !important;
++		touch-action: pan-y;
++		scrollbar-width: none;
++	}
++}
++
++/* Composery: slight hover on the welcome agent cards (their base styles are inline in welcome.diff). */
++.composery-agent {
++	transition: background-color 0.1s ease;
++}
++
++.composery-agent:hover {
++	background-color: var(--vscode-list-hoverBackground);
++}
++
++/* Composery: code-server's custom card is prepended into an upstream grid column that is normally
++ * clipped to the editor height. When the agent setup card is present, let that grid grow so the
++ * page-level DomScrollableElement gets a real scroll range for wheel, scrollbar and touch input. */
++.monaco-workbench .part.editor > .content .gettingStartedContainer .gettingStartedSlideCategories > .gettingStartedCategoriesContainer:has(.composery-agent-category) {
++	height: auto;
++	min-height: 100%;
++}
++
++.monaco-workbench .part.editor > .content .gettingStartedContainer .gettingStartedSlideCategories > .gettingStartedCategoriesContainer:has(.composery-agent-category) > .categories-column {
++	overflow: visible;
++}
+--- a/lib/vscode/src/vs/workbench/services/views/common/viewContainerModel.ts
++++ b/lib/vscode/src/vs/workbench/services/views/common/viewContainerModel.ts
+@@ -23,6 +23,17 @@ import { windowLogGroup } from '../../log/common/logConstants.js';
+ 
+ export function getViewsStateStorageId(viewContainerStorageId: string): string { return `${viewContainerStorageId}.hidden`; }
+ 
++// Composery: views hidden by default (as if their descriptor set hideByDefault).
++// Applied only when the user has no stored visibility state for the view, so a
++// user un-hiding any of these persists normally.
++const COMPOSERY_DEFAULT_HIDDEN_VIEW_IDS = new Set<string>([
++	'outline',
++	'timeline',
++	'npm',
++	'workbench.scm.repositories',
++	'extensions.recommendedList',
++]);
++
+ interface IStoredWorkspaceViewState {
+ 	collapsed: boolean;
+ 	isHidden: boolean;
+@@ -503,23 +514,25 @@ export class ViewContainerModel extends Disposable implements IViewContainerMode
+ 			}
+ 
+ 			let state = this.viewDescriptorsState.get(viewDescriptor.id);
++			// Composery: treat ids in the default-hidden set as if hideByDefault was set.
++			const hideByDefault = viewDescriptor.hideByDefault || COMPOSERY_DEFAULT_HIDDEN_VIEW_IDS.has(viewDescriptor.id);
+ 			if (state) {
+ 				// set defaults if not set
+ 				if (viewDescriptor.workspace) {
+-					state.visibleWorkspace = isUndefinedOrNull(addedViewDescriptorState.visible) ? (isUndefinedOrNull(state.visibleWorkspace) ? !viewDescriptor.hideByDefault : state.visibleWorkspace) : addedViewDescriptorState.visible;
++					state.visibleWorkspace = isUndefinedOrNull(addedViewDescriptorState.visible) ? (isUndefinedOrNull(state.visibleWorkspace) ? !hideByDefault : state.visibleWorkspace) : addedViewDescriptorState.visible;
+ 				} else {
+ 					const isVisible = state.visibleGlobal;
+-					state.visibleGlobal = isUndefinedOrNull(addedViewDescriptorState.visible) ? (isUndefinedOrNull(state.visibleGlobal) ? !viewDescriptor.hideByDefault : state.visibleGlobal) : addedViewDescriptorState.visible;
++					state.visibleGlobal = isUndefinedOrNull(addedViewDescriptorState.visible) ? (isUndefinedOrNull(state.visibleGlobal) ? !hideByDefault : state.visibleGlobal) : addedViewDescriptorState.visible;
+ 					if (state.visibleGlobal && !isVisible) {
+-						this.logger.value.trace(`Added view ${viewDescriptor.id} in the container ${this.viewContainer.id} and showing it.`, `${isVisible}`, `${viewDescriptor.hideByDefault}`, `${addedViewDescriptorState.visible}`);
++						this.logger.value.trace(`Added view ${viewDescriptor.id} in the container ${this.viewContainer.id} and showing it.`, `${isVisible}`, `${hideByDefault}`, `${addedViewDescriptorState.visible}`);
+ 					}
+ 				}
+ 				state.collapsed = isUndefinedOrNull(addedViewDescriptorState.collapsed) ? (isUndefinedOrNull(state.collapsed) ? !!viewDescriptor.collapsed : state.collapsed) : addedViewDescriptorState.collapsed;
+ 			} else {
+ 				state = {
+ 					active: false,
+-					visibleGlobal: isUndefinedOrNull(addedViewDescriptorState.visible) ? !viewDescriptor.hideByDefault : addedViewDescriptorState.visible,
+-					visibleWorkspace: isUndefinedOrNull(addedViewDescriptorState.visible) ? !viewDescriptor.hideByDefault : addedViewDescriptorState.visible,
++					visibleGlobal: isUndefinedOrNull(addedViewDescriptorState.visible) ? !hideByDefault : addedViewDescriptorState.visible,
++					visibleWorkspace: isUndefinedOrNull(addedViewDescriptorState.visible) ? !hideByDefault : addedViewDescriptorState.visible,
+ 					collapsed: isUndefinedOrNull(addedViewDescriptorState.collapsed) ? !!viewDescriptor.collapsed : addedViewDescriptorState.collapsed,
+ 				};
+ 			}

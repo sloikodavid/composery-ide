@@ -1,0 +1,54 @@
+The release ships the files we add to the browser tree.
+
+Both of upstream's copy steps enumerate what reaches the built product, and
+neither knows about files this fork adds. Left alone each fails the same silent
+way: the file is present in the source tree, absent from the release, and the
+page that references it 404s at runtime with nothing failing at build time.
+
+  ci/build/build-release.sh   src/browser/pages is filtered to *.html and *.css,
+                              which is right for what that directory means
+                              upstream - templates and their styles. Ours also
+                              holds the scripts those templates load (auth.js,
+                              favicon.js, password-check.js), all served from
+                              /_static, and this is the only step that puts them
+                              there.
+  build/next/index.ts         Resources are copied verbatim from src to out by
+                              path. workbench.html is already on this list and is
+                              how the mechanism is known to work; the media beside
+                              it - the narrow, touch and font stylesheets the page
+                              links, and the two woff2 they name - go the same way.
+                              They cannot be bundled instead: esbuild bundles CSS
+                              only for the entry points in
+                              getCssBundleEntryPointsForTarget, which would merge
+                              them into workbench.css mid-cascade when they are
+                              overrides that must come last, and its loader table
+                              has no .woff2 entry.
+
+Doing this here rather than copying into the release afterwards is what keeps
+build.sh free of a post-build phase, and keeps the overlay a plain mirror of the
+source tree with no timing dimension. An upstream bump that restructures either
+list fails at fuzz=0, which is exactly when we need to look.
+
+--- a/ci/build/build-release.sh
++++ b/ci/build/build-release.sh
+@@ -62,6 +62,8 @@
+   mkdir -p "$RELEASE_PATH/src/browser/pages"
+   rsync src/browser/pages/*.html "$RELEASE_PATH/src/browser/pages"
+   rsync src/browser/pages/*.css "$RELEASE_PATH/src/browser/pages"
++  # Composery: our pages load scripts too; without this they 404 from /_static.
++  rsync src/browser/pages/*.js "$RELEASE_PATH/src/browser/pages"
+   rsync src/browser/robots.txt "$RELEASE_PATH/src/browser"
+ 
+   # Adds the commit to package.json
+--- a/lib/vscode/build/next/index.ts
++++ b/lib/vscode/build/next/index.ts
+@@ -351,6 +351,9 @@
+ 	'vs/workbench/contrib/extensions/browser/media/*.png',
+ 	'vs/workbench/services/extensionManagement/common/media/*.svg',
+ 	'vs/workbench/services/extensionManagement/common/media/*.png',
++
++	// Composery: workbench stylesheets and fonts workbench.html links directly.
++	'vs/code/browser/workbench/media/*',
+ ];
+ 
+ // Resources for standalone web target (browser-only, no server)

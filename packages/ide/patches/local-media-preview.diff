@@ -1,0 +1,69 @@
+Open local media without turning its bytes into text.
+
+A browser without the File System Access API cannot hand the workbench a file
+handle, so both places that take a local file - the "Open Files..." fallback in
+the unsupported-browser dialog, and a drop onto the workbench - fall back to a
+FileReader and `extractFileListData`. That helper returns an `untitled:`
+resource carrying the bytes, and an untitled editor is a text editor: the buffer
+is decoded as text before any preview can read it, so a picture opens as
+mojibake and only previews once it has been saved into the workspace.
+
+The fix belongs in the helper, not in either caller: both of them hand its
+result straight to `openEditors`, and fixing one leaves the other corrupting the
+same file. Media keeps its bytes in the temporary in-memory filesystem and
+travels as an ordinary resource, so the custom editor for its type resolves as
+it would for a workspace file. Text is untouched and still opens untitled.
+
+The temporary resource keeps the original basename under a uuid folder - the
+editor selector globs on the basename and the tab shows it - and writeFile
+creates that folder on its own. Nothing is added to the workspace.
+
+--- a/lib/vscode/src/vs/platform/dnd/browser/dnd.ts
++++ b/lib/vscode/src/vs/platform/dnd/browser/dnd.ts
+@@ -12,9 +12,11 @@
+ import { IDisposable, toDisposable } from '../../../base/common/lifecycle.js';
+ import { ResourceMap } from '../../../base/common/map.js';
+ import { parse } from '../../../base/common/marshalling.js';
++import { getMediaMime } from '../../../base/common/mime.js';
+ import { Schemas } from '../../../base/common/network.js';
+ import { isNative, isWeb } from '../../../base/common/platform.js';
+ import { URI, UriComponents } from '../../../base/common/uri.js';
++import { generateUuid } from '../../../base/common/uuid.js';
+ import { localize } from '../../../nls.js';
+ import { IDialogService } from '../../dialogs/common/dialogs.js';
+ import { IBaseTextResourceEditorInput, ITextEditorSelection } from '../../editor/common/editor.js';
+@@ -246,6 +248,7 @@
+ 
+ export async function extractFileListData(accessor: ServicesAccessor, files: FileList): Promise<IFileTransferData[]> {
+ 	const dialogService = accessor.get(IDialogService);
++	const fileService = accessor.get(IFileService);
+ 
+ 	const results: DeferredPromise<IFileTransferData | undefined>[] = [];
+ 
+@@ -275,9 +278,25 @@
+ 					return;
+ 				}
+ 
++				const contents = typeof loadResult === 'string' ? VSBuffer.fromString(loadResult) : VSBuffer.wrap(new Uint8Array(loadResult));
++
++				// Composery: an untitled editor is a text editor, so media handed over
++				// as untitled contents reaches its preview already decoded. Keep the
++				// bytes in the temporary filesystem and pass a resource instead.
++				if (getMediaMime(name)) {
++					const resource = URI.from({ scheme: Schemas.tmp, path: `/external/${generateUuid()}/${name}` });
++					try {
++						await fileService.writeFile(resource, contents);
++						result.complete({ resource });
++					} catch {
++						result.complete(undefined); // as for a read failure: the file does not open
++					}
++					return;
++				}
++
+ 				result.complete({
+ 					resource: URI.from({ scheme: Schemas.untitled, path: name }),
+-					contents: typeof loadResult === 'string' ? VSBuffer.fromString(loadResult) : VSBuffer.wrap(new Uint8Array(loadResult))
++					contents
+ 				});
+ 			};
+ 

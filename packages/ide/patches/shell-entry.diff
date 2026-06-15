@@ -1,0 +1,46 @@
+Bundle the small-surface shell as its own web entry point.
+
+shell.ts is the runtime half of narrow.css and touch.css - the back guard, the
+viewport/keyboard custom properties, the modal-editor and keybindings-scroll
+behaviours. It used to ship as a hand-written file copied verbatim into the
+built output, which put it outside every check the rest of our code gets (no
+compiler, no lint, no rebrand) and, worse, left it unable to import anything:
+the narrow breakpoint and the touch query were restated in it by hand and held
+together only by a mirror test.
+
+As an entry point it is ordinary source in the overlay, imports the two
+canonical gates, and is bundled by the same step as the workbench. The
+stylesheets still mirror the queries, because CSS cannot import a constant, and
+the mirror test still pins those.
+
+Both entry lists get it. The shipped reh-web bundle reads buildfile.ts today,
+but upstream is moving to build/next, and a bundle that silently omits this
+entry is exactly the failure worth spending a second hunk on: the workbench
+still loads, only the whole small-screen shell is missing.
+
+--- a/lib/vscode/build/buildfile.ts
++++ b/lib/vscode/build/buildfile.ts
+@@ -50,7 +50,11 @@
+ 	createModuleDescription('vs/sessions/electron-browser/sessions'),
+ ];
+ 
+-export const codeWeb = createModuleDescription('vs/code/browser/workbench/workbench');
++export const codeWeb = [
++	createModuleDescription('vs/code/browser/workbench/workbench'),
++	// Composery: loaded by workbench.html ahead of the workbench entry.
++	createModuleDescription('vs/code/browser/workbench/shell'),
++];
+ 
+ export const codeServer = [
+ 	// 'vs/server/node/server.main' is not included here because it gets inlined via ./src/server-main.js
+--- a/lib/vscode/build/next/index.ts
++++ b/lib/vscode/build/next/index.ts
+@@ -117,6 +117,8 @@
+ const webEntryPoints = [
+ 	'vs/workbench/workbench.web.main.internal',
+ 	'vs/code/browser/workbench/workbench',
++	// Composery: loaded by workbench.html ahead of the workbench entry.
++	'vs/code/browser/workbench/shell',
+ ];
+ 
+ // Additional web-only entry points (CDN build only, not in server-web)

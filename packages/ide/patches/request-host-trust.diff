@@ -1,0 +1,68 @@
+The request names its own host, and nothing else does.
+
+Forwarded and X-Forwarded-Host are client-controlled unless the application has
+an explicit trusted-proxy boundary, and this one has none. Composery's supported
+edges - Caddy, the cloud proxy - preserve Host, so Host is the single authority
+for origin checks and port-domain routing.
+
+The workbench drops X-Forwarded-Prefix for the same reason. Its relative-URL
+calculation already derives every browser path from the request URL, so the
+header fallback was both unreachable and a second authority a client could
+write. The constructor slot stays positional for VS Code's instantiation helper
+but is no longer stored as state.
+
+--- a/src/node/http.ts
++++ b/src/node/http.ts
+@@ -412,28 +412,9 @@ export function authenticateOrigin(req: express.Request): void {
+  * Get the host from headers.  It will be trimmed and lowercased.
+  */
+ export function getHost(req: express.Request): string | undefined {
+-  // Honor Forwarded if present.
+-  const forwardedRaw = getFirstHeader(req, "forwarded")
+-  if (forwardedRaw) {
+-    const parts = forwardedRaw.split(/[;,]/)
+-    for (let i = 0; i < parts.length; ++i) {
+-      const [key, value] = splitOnFirstEquals(parts[i])
+-      if (key.trim().toLowerCase() === "host" && value) {
+-        return value.trim().toLowerCase()
+-      }
+-    }
+-  }
+-
+-  // Honor X-Forwarded-Host if present.  Some reverse proxies will set multiple
+-  // comma-separated hosts.
+-  const xHost = getFirstHeader(req, "x-forwarded-host")
+-  if (xHost) {
+-    const firstXHost = xHost.split(",")[0]
+-    if (firstXHost) {
+-      return firstXHost.trim().toLowerCase()
+-    }
+-  }
+-
+-  const host = getFirstHeader(req, "host")
++  // Forwarded host headers are client-controlled unless the application has
++  // an explicit trusted-proxy boundary. Composery's supported edges preserve
++  // Host, so use it directly for origin checks and port-domain routing.
++  const [host] = splitOnFirstEquals(getFirstHeader(req, "host") || "")
+   return host ? host.trim().toLowerCase() : undefined
+ }
+--- a/lib/vscode/src/vs/server/node/webClientServer.ts
++++ b/lib/vscode/src/vs/server/node/webClientServer.ts
+@@ -121,7 +121,7 @@ export class WebClientServer {
+ 
+	constructor(
+		private readonly _connectionToken: ServerConnectionToken,
+-		private readonly _basePath: string,
++		_basePath: string,
+		private readonly _productPath: string,
+		@IServerEnvironmentService private readonly _environmentService: IServerEnvironmentService,
+		@ILogService private readonly _logService: ILogService,
+@@ -268,7 +268,7 @@ export class WebClientServer {
+ 		// Prefix routes with basePath for clients
+ 		const rootBase = relativeRoot(getOriginalUrl(req))
+ 		const vscodeBase = relativePath(getOriginalUrl(req))
+-		const basePath = vscodeBase || getFirstHeader('x-forwarded-prefix') || this._basePath;
++		const basePath = vscodeBase;
+ 
+ 		const queryConnectionToken = parsedUrl.query[connectionTokenQueryName];
+ 		if (typeof queryConnectionToken === 'string') {

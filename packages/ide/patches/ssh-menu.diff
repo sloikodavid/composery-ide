@@ -1,0 +1,27 @@
+Composery: put "Connect Over SSH" in the File menu.
+
+The command itself is a builtin extension (overlay/lib/vscode/extensions/
+composery-ssh). An extension cannot reach the menubar - MenuId.MenubarHomeMenu
+is internal - so the entry has to be registered here, beside the one the API
+keys command already has.
+
+Its own patch rather than a hunk added to api.diff: SSH is not the automation
+API, and a patch is named for the concern it carries.
+
+--- a/lib/vscode/src/vs/workbench/browser/client.ts
++++ b/lib/vscode/src/vs/workbench/browser/client.ts
+@@ -117,6 +117,14 @@
+ 			},
+ 		});
+ 
++		// Composery: the command is implemented by the composery-ssh builtin extension.
++		MenuRegistry.appendMenuItem(MenuId.MenubarHomeMenu, {
++			command: {
++				id: 'composery.connectOverSsh',
++				title: localize('connectOverSsh', "Connect Over SSH"),
++			},
++		});
++
+ 		this.addShowQrCommand();
+ 		this.reloadOnBackForwardRestore();
+ 

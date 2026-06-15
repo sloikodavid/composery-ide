@@ -1,0 +1,2803 @@
+The touch capability layer: everything gated on the canonical touch gate
+(touchGate.ts - hover: none / any-pointer: coarse) that a hover-and-fine-
+pointer editor needs to work with a coarse pointer and a soft keyboard. The
+narrow-viewport axis is narrow.diff; the Android EditContext vendor-defect
+workaround keeps its own patch so the day the defect dies, its patch does too.
+
+Editor. PointerEventHandler is selected on the touch gate, not the phone UA -
+upstream's (isIOS || isAndroid+isMobile) leaves Android tablets (no "Mobi" UA
+token) and touch laptops on the legacy TouchHandler, which has none of this.
+Touch selection is model-driven: the browser's selection UI aims at the
+editor's hidden one-pixel input at garbage geometry (device-verified), so
+long-press word-selects through the model, the shared selection handles
+(touchSelectionHandles.ts, the same grips the terminal uses) adjust it against
+a model-coordinate anchor that survives the drag's edge auto-scroll, and a
+hold inside a selection opens the IDE context menu. Pans are classified before
+the tap path can focus the hidden input; keyboard-driven layout preserves
+scroll; mouse presses fall through to the mousedown flow so click counts
+survive. What a press turns out to have meant, and where the selection's edges
+sit, are overlay modules this calls (touchPress.ts, touchSelection.ts): a tap, a
+scroll, a word select and the hold menu are each other's alternatives and the
+rules deciding between them are worth running, not reading off a diff.
+
+Menus and lists. Long-press opens context menus wherever right-click does
+(editor tabs, composite bars, view panes, status bar, lists), with the native
+context menu suppressed while a gesture-opened menu is up; menu placement
+respects the visual viewport; tap focuses lists/terminal on Tap, never on
+touchstart, so a scroll gesture cannot pop the keyboard; taps consumed by
+inline action controls do not also select the row; hover-revealed action bars
+stay visible (touch.css pairs each forced bar with the upstream hover rule). A
+menu opened by a finger never takes DOM focus: focus is what closes the soft
+keyboard, that closing resizes whatever the menu was opened over, and a terminal
+answers a row-count change by dropping its selection - so the menu a long-press
+selection asked for used to destroy that selection as it opened (device-verified,
+and the keybar holds its dock through a menu for the same reason). Items are
+tapped, not walked with arrow keys, and Escape still cancels.
+
+Soft keyboard. Whether one is up is answered in exactly one place
+(softKeyboard.ts) because browsers expose two shapes: one shrinks the visual
+viewport, while one shrinks both viewports in lockstep and is visible only
+through shell.js's published verdict. Everything that has to know goes through
+it - the workbench fit, the keybar, the editor's tap-to-refocus - so no surface
+can measure a number that is structurally zero on its own platform. layout()
+fits the workbench to the visual viewport and the edge-to-edge bottom inset -
+gated on the touch capability, not a vendor list: where no keyboard
+exists it reads 0 (Android device-verified; other coarse-pointer platforms
+reasoned, not device-tested). The Keybar docks the keys a soft keyboard cannot
+produce (Esc/Tab/arrows/F-keys/sticky modifiers) above it, reserved out of the
+grid, while a keyboard is up or a terminal holds focus and never otherwise.
+IME line-break commits replay as cancelable Enter keydowns (imeEnter.ts)
+carrying the keybar's sticky modifiers; single-line inputs ask the IME for a
+newline key (enterkeyhint=enter - an action key renders as Gboard's arrow and
+emits nothing); quick input prompts show OK on touch as the IME-independent
+accept path. Nothing forces the keyboard down: it follows focus, and a pan
+neither pops nor closes it. Transient overlays (quick input, context menus)
+dismiss on a deliberate press outside them, never on focus-out - on touch the
+soft keyboard churns focus with no intent to dismiss (opening a menu blurs the
+field, the keyboard closing, iOS pulling focus to <body>), so a blur is not a
+dismissal and ignoreFocusOut is honoured. For a context menu that press has
+nowhere to land but the full-screen block the context view puts up, which is a
+child of the container the outside-press listener treats as inside - so the
+block itself carries the dismissal, or the menu has none at all but Escape
+(device-verified: the press blurred the surface underneath and left an invisible
+block over a workbench that answered nothing). Nothing autofocuses a search field on
+touch (settings, keybindings, extensions, search, SCM - upstream exempted iOS
+only); editables keep the OS text-selection menu instead of the void - all but the
+invisible IME shims the editor and the terminal park inside their own text, which
+touch.css takes out of hit-testing so a hold there reaches the surface it looks
+like it landed on (device-verified: it reached nothing at all before).
+
+Terminal. Focus on Tap, and the soft keyboard on a tap and nothing else
+(touchKeyboard.ts). Focus is not the lever here that it is everywhere else:
+xterm holds its hidden textarea focused for as long as the terminal is the
+active surface, so the caret stays visible with the keyboard dismissed and
+focus() raises nothing. What raises it again is the browser, for any press
+landing on the focused editable - which on a phone is every swipe of the
+buffer - and it does so even though this layer cancels the whole sequence
+(device-verified: touchstart, every touchmove and touchend all report
+defaultPrevented, no Tap is emitted, no focus lever is called, and the keyboard
+still comes up). preventDefault does not reach that decision, so the hold is
+taken away from the browser with inputmode="none" between taps.
+autocomplete=off so Android IMEs drop the suggestion
+strip over shell input; the initial hint is tappable (Gesture.ignoreTarget).
+Text selection is a whole contribution of ours in the overlay
+(terminal.touchSelection.contribution.ts) - a hold word-selects through xterm's
+own selection service, the shared handles adjust the range, and a hold on the
+selection lets the pane's menu open over it - so all this patch owes it is the
+contribution import, plus the selection service on the xterm-private surface and
+a selection-change refresh of the selection context keys, without which Copy sat
+disabled in the very menu the selection was made for (every other refresh hangs
+off a mouse or key event, and a hold produces neither).
+The keyboard resizes the grid like any other pane change - holding the scroll
+position across that is xterm-resize-scroll.diff, which is not touch-gated.
+
+Links. A tap activates what a click activates: detected terminal links
+(url/localFile/localFolder - never 'word') hit-tested through the shared cell
+geometry, editor links via a cursor-on-link context menu entry, rendered-markdown
+links through Gesture Tap.
+
+Chrome. Sash hit area widens on every coarse-pointer device (upstream: iOS
+only); selects use the native picker on touch; the footer collapses to give
+short layouts its row back.
+
+--- a/lib/vscode/src/vs/base/browser/event.ts
++++ b/lib/vscode/src/vs/base/browser/event.ts
+@@ -19,7 +19,6 @@ export interface DOMEventMap extends HTMLElementEventMap, DocumentEventMap, Wind
+ 	'-monaco-gesturechange': GestureEvent;
+ 	'-monaco-gesturestart': GestureEvent;
+ 	'-monaco-gesturesend': GestureEvent;
+-	'-monaco-gesturecontextmenu': GestureEvent;
+ 	'compositionstart': CompositionEvent;
+ 	'compositionupdate': CompositionEvent;
+ 	'compositionend': CompositionEvent;
+--- a/lib/vscode/src/vs/base/browser/markdownRenderer.ts
++++ b/lib/vscode/src/vs/base/browser/markdownRenderer.ts
+@@ -22,6 +22,8 @@ import * as domSanitize from './domSanitize.js';
+ import { convertTagToPlaintext } from './domSanitize.js';
+ import { StandardKeyboardEvent } from './keyboardEvent.js';
+ import { StandardMouseEvent } from './mouseEvent.js';
++import { EventType as TouchEventType, Gesture, GestureEvent } from './touch.js';
++import { isTouch } from './touchGate.js';
+ import { renderIcon, renderLabelWithIcons } from './ui/iconLabel/iconLabels.js';
+ 
+ export type MarkdownActionHandler = (linkContent: string, mdStr: IMarkdownString) => void;
+@@ -314,6 +316,23 @@ export function renderMarkdown(markdown: IMarkdownString, options: MarkdownRende
+ 			}
+ 			activateLink(markdown, options, keyboardEvent);
+ 		}));
++
++		// Composery: inside a Gesture target (list rows, trees, menus) touchstart is
++		// preventDefaulted and the browser never synthesizes a click, so rendered links
++		// are tap-dead. Becoming a Gesture target ourselves is what routes Tap here;
++		// the suppressed click keeps activation single-fire everywhere else.
++		if (isTouch(DOM.getWindow(outElement))) {
++			disposables.add(Gesture.addTarget(outElement));
++			disposables.add(DOM.addDisposableListener(outElement, TouchEventType.Tap, (e: GestureEvent) => {
++				if (DOM.isHTMLElement(e.initialTarget)) {
++					activateLink(markdown, options, {
++						target: e.initialTarget,
++						preventDefault: () => e.preventDefault(),
++						stopPropagation: () => e.stopPropagation()
++					});
++				}
++			}));
++		}
+ 	}
+ 
+ 	// Remove/disable inputs
+@@ -448,7 +467,7 @@ function preprocessMarkdownString(markdown: IMarkdownString) {
+ 	return value;
+ }
+ 
+-function activateLink(mdStr: IMarkdownString, options: MarkdownRenderOptions, event: StandardMouseEvent | StandardKeyboardEvent): void {
++function activateLink(mdStr: IMarkdownString, options: MarkdownRenderOptions, event: Pick<StandardMouseEvent, 'target' | 'preventDefault' | 'stopPropagation'>): void {
+ 	const target = event.target.closest('a[data-href]');
+ 	if (!DOM.isHTMLElement(target)) {
+ 		return;
+--- a/lib/vscode/src/vs/base/browser/touch.ts
++++ b/lib/vscode/src/vs/base/browser/touch.ts
+@@ -10,12 +10,16 @@ import { Event as EventUtils } from '../common/event.js';
+ import { Disposable, IDisposable, markAsSingleton, toDisposable } from '../common/lifecycle.js';
+ import { LinkedList } from '../common/linkedList.js';
+ 
++// Composery: how far a finger may travel and still count as a press rather than a scroll.
++// Exported because the editor classifies its own pans against the same number
++// (pointerHandler.ts) and a second copy of it would decide the same gesture differently.
++export const PAN_THRESHOLD = 16;
++
+ export namespace EventType {
+ 	export const Tap = '-monaco-gesturetap';
+ 	export const Change = '-monaco-gesturechange';
+ 	export const Start = '-monaco-gesturestart';
+ 	export const End = '-monaco-gesturesend';
+-	export const Contextmenu = '-monaco-gesturecontextmenu';
+ }
+ 
+ interface TouchData {
+@@ -27,6 +31,11 @@ interface TouchData {
+ 	rollingTimestamps: number[];
+ 	rollingPageX: number[];
+ 	rollingPageY: number[];
++	contextMenuTimer: number | undefined;
++	contextMenuFired: boolean;
++	tapCancelled: boolean;
++	syntheticContextMenu: boolean;
++	initialEventTimeStamp: number;
+ }
+ 
+ export interface GestureEvent extends MouseEvent {
+@@ -76,11 +85,16 @@ export class Gesture extends Disposable {
+ 	private readonly targets = new LinkedList<HTMLElement>();
+ 	private readonly ignoreTargets = new LinkedList<HTMLElement>();
+ 	private handle: IDisposable | null;
++	private inertiaTargets: readonly EventTarget[] | undefined;
+ 
+ 	private readonly activeTouches: { [id: number]: TouchData };
+ 
+ 	private _lastSetTapCountTime: number;
+ 
++	// Composery: while set, a trusted contextmenu is the release echo of a long-press whose
++	// menu the fallback already opened (Windows fires its native one only on finger-up).
++	private suppressNativeContextMenuUntil = 0;
++
+ 	private static readonly CLEAR_TAP_COUNT_TIME = 400; // ms
+ 
+ 
+@@ -95,6 +109,14 @@ export class Gesture extends Disposable {
+ 			disposables.add(DomUtils.addDisposableListener(window.document, 'touchstart', (e: TouchEvent) => this.onTouchStart(e), { passive: false }));
+ 			disposables.add(DomUtils.addDisposableListener(window.document, 'touchend', (e: TouchEvent) => this.onTouchEnd(window, e)));
+ 			disposables.add(DomUtils.addDisposableListener(window.document, 'touchmove', (e: TouchEvent) => this.onTouchMove(e), { passive: false }));
++			disposables.add(DomUtils.addDisposableListener(window.document, 'touchcancel', (e: TouchEvent) => this.onTouchCancel(e)));
++			disposables.add(DomUtils.addDisposableListener(window.document, 'contextmenu', (e: MouseEvent) => this.onNativeContextMenu(e), true));
++			// Composery: some engines follow an unprevented long-press release with an
++			// emulated-mouse tap; with the fallback menu already open, that tap lands on the
++			// menu's blocking overlay and dismisses it - swallow the whole echo batch.
++			for (const type of ['mousedown', 'mouseup', 'click']) {
++				disposables.add(DomUtils.addDisposableListener(window.document, type, (e: MouseEvent) => this.onReleaseMouseEcho(e), true));
++			}
+ 		}, { window: mainWindow, disposables: this._store }));
+ 	}
+ 
+@@ -152,15 +174,32 @@ export class Gesture extends Disposable {
+ 	private onTouchStart(e: TouchEvent): void {
+ 		const timestamp = Date.now(); // use Date.now() because on FF e.timeStamp is not epoch based.
+ 
++		// Composery: a touch landing while a fling still animates catches the scroll, as on
++		// native scrollers - remember the flinging targets so the catch is spent as a tap
++		// (release must not focus the editor and pop the keyboard, or activate a list row).
++		// The touch can still pan onward or hold into a long-press.
++		let flingTargets: readonly EventTarget[] | undefined;
+ 		if (this.handle) {
+ 			this.handle.dispose();
+ 			this.handle = null;
++			flingTargets = this.inertiaTargets;
+ 		}
+ 
++		// Composery: long-presses are single-finger - a second touch cancels any pending timer.
++		for (const id in this.activeTouches) {
++			this.clearContextMenuTimer(this.activeTouches[Number(id)]);
++		}
++
++		// Composery: a fresh touch is a deliberate new gesture - stop swallowing the
++		// previous long-press release echo or this touch's own synthesized events die too.
++		this.suppressNativeContextMenuUntil = 0;
++
+ 		for (let i = 0, len = e.targetTouches.length; i < len; i++) {
+ 			const touch = e.targetTouches.item(i);
++			const target = touch.target;
++			const caughtFling = !!flingTargets && target instanceof Node && flingTargets.some(t => t instanceof Node && t.contains(target));
+ 
+-			this.activeTouches[touch.identifier] = {
++			const data: TouchData = this.activeTouches[touch.identifier] = {
+ 				id: touch.identifier,
+ 				initialTarget: touch.target,
+ 				initialTimeStamp: timestamp,
+@@ -168,9 +207,28 @@ export class Gesture extends Disposable {
+ 				initialPageY: touch.pageY,
+ 				rollingTimestamps: [timestamp],
+ 				rollingPageX: [touch.pageX],
+-				rollingPageY: [touch.pageY]
++				rollingPageY: [touch.pageY],
++				contextMenuTimer: undefined,
++				contextMenuFired: false,
++				tapCancelled: caughtFling,
++				syntheticContextMenu: false,
++				// The event's own timeStamp carries the finger's true timing even when
++				// delivery to the page lags behind (see the pan-revert in onTouchMove).
++				initialEventTimeStamp: e.timeStamp
+ 			};
+ 
++			// Composery: re-fire the long-press as a native-shaped contextmenu DURING the
++			// hold - the release-time branch below stays as a fallback. This touchstart's
++			// preventDefault suppresses the browser's own event for gesture targets, and
++			// iOS emits none, so every platform goes through the same bubbling event.
++			if (len === 1 && Object.keys(this.activeTouches).length === 1) {
++				data.contextMenuTimer = mainWindow.setTimeout(() => {
++					data.contextMenuTimer = undefined;
++					data.contextMenuFired = true;
++					this.fireFallbackContextMenu(data);
++				}, Gesture.HOLD_DELAY);
++			}
++
+ 			const evt = this.newGestureEvent(EventType.Start, touch.target);
+ 			evt.pageX = touch.pageX;
+ 			evt.pageY = touch.pageY;
+@@ -201,23 +259,34 @@ export class Gesture extends Disposable {
+ 			const data = this.activeTouches[touch.identifier],
+ 				holdTime = Date.now() - data.initialTimeStamp;
+ 
+-			if (holdTime < Gesture.HOLD_DELAY
+-				&& Math.abs(data.initialPageX - data.rollingPageX.at(-1)!) < 30
+-				&& Math.abs(data.initialPageY - data.rollingPageY.at(-1)!) < 30) {
+-
+-				const evt = this.newGestureEvent(EventType.Tap, data.initialTarget);
+-				evt.pageX = data.rollingPageX.at(-1)!;
+-				evt.pageY = data.rollingPageY.at(-1)!;
+-				this.dispatchEvent(evt);
+-
+-			} else if (holdTime >= Gesture.HOLD_DELAY
+-				&& Math.abs(data.initialPageX - data.rollingPageX.at(-1)!) < 30
+-				&& Math.abs(data.initialPageY - data.rollingPageY.at(-1)!) < 30) {
++			this.clearContextMenuTimer(data);
++			if (data.contextMenuFired) {
++				// Composery: the long-press already fired during the hold - the release must
++				// not also tap, re-fire the menu, or start an inertia fling.
++				if (data.syntheticContextMenu) {
++					// Windows-style browsers fire their native contextmenu only on finger-up;
++					// with the fallback menu already open, that echo must be swallowed.
++					this.suppressNativeContextMenuUntil = Date.now() + 500;
++				}
++				this.dispatchEvent(this.newGestureEvent(EventType.End, data.initialTarget));
++				delete this.activeTouches[touch.identifier];
++				continue;
++			}
+ 
+-				const evt = this.newGestureEvent(EventType.Contextmenu, data.initialTarget);
+-				evt.pageX = data.rollingPageX.at(-1)!;
+-				evt.pageY = data.rollingPageY.at(-1)!;
+-				this.dispatchEvent(evt);
++			// Composery: a touch that never left the pan threshold is a press, long or short;
++			// one that did is a scroll. Upstream asked the same question twice with a second,
++			// looser 30px slop of its own - unreachable now that onTouchMove settles the
++			// verdict at 16px the moment the finger crosses it, and a threshold that only
++			// ever disagrees with the live one is a bug waiting for the day it does.
++			if (!data.tapCancelled) {
++				if (holdTime >= Gesture.HOLD_DELAY) {
++					this.fireFallbackContextMenu(data);
++				} else {
++					const evt = this.newGestureEvent(EventType.Tap, data.initialTarget);
++					evt.pageX = data.rollingPageX.at(-1)!;
++					evt.pageY = data.rollingPageY.at(-1)!;
++					this.dispatchEvent(evt);
++				}
+ 
+ 			} else if (activeTouchCount === 1) {
+ 				const finalX = data.rollingPageX.at(-1)!;
+@@ -228,14 +297,20 @@ export class Gesture extends Disposable {
+ 				const deltaY = finalY - data.rollingPageY[0];
+ 
+ 				// We need to get all the dispatch targets on the start of the inertia event
+-				const dispatchTo = [...this.targets].filter(t => data.initialTarget instanceof Node && t.contains(data.initialTarget));
++				// Composery: honour the ignore list here too - normal dispatch checks it, but
++				// inertia dispatches directly, so a flick out of an ignored element (a native
++				// select, the terminal's initial hint) would still fling its gesture target.
++				const owner = data.initialTarget instanceof Node ? data.initialTarget : undefined;
++				const ignored = !!owner && [...this.ignoreTargets].some(t => t.contains(owner));
++				const dispatchTo = ignored ? [] : [...this.targets].filter(t => !!owner && t.contains(owner));
+ 				this.inertia(targetWindow, dispatchTo, timestamp,	// time now
+ 					Math.abs(deltaX) / deltaT,						// speed
+ 					deltaX > 0 ? 1 : -1,							// x direction
+ 					finalX,											// x now
+ 					Math.abs(deltaY) / deltaT,  					// y speed
+ 					deltaY > 0 ? 1 : -1,							// y direction
+-					finalY											// y now
++					finalY,											// y now
++					data.initialTarget								// gesture owner
+ 				);
+ 			}
+ 
+@@ -252,6 +327,85 @@ export class Gesture extends Disposable {
+ 		}
+ 	}
+ 
++	private onTouchCancel(e: TouchEvent): void {
++		// Composery: the OS interrupts touches (app switch mid-touch, incoming call, palm
++		// rejection) with touchcancel, which was never handled - the stale activeTouches
++		// entries then fail every single-touch check (inertia, the long-press timer) forever.
++		for (let i = 0, len = e.changedTouches.length; i < len; i++) {
++			const touch = e.changedTouches.item(i);
++			const data = this.activeTouches[touch.identifier];
++			if (!data) {
++				continue;
++			}
++			this.clearContextMenuTimer(data);
++			this.dispatchEvent(this.newGestureEvent(EventType.End, data.initialTarget));
++			delete this.activeTouches[touch.identifier];
++		}
++		this.dispatched = false;
++	}
++
++	private clearContextMenuTimer(data: TouchData): void {
++		if (data.contextMenuTimer !== undefined) {
++			mainWindow.clearTimeout(data.contextMenuTimer);
++			data.contextMenuTimer = undefined;
++		}
++	}
++
++	private onNativeContextMenu(e: MouseEvent): void {
++		const syntheticHoldActive = Object.values(this.activeTouches).some(data => data.contextMenuFired && data.syntheticContextMenu);
++		if (e.isTrusted && (syntheticHoldActive || Date.now() < this.suppressNativeContextMenuUntil)) {
++			// Composery: the release echo of a long-press whose menu the fallback already
++			// opened during the hold - a second menu must not fire. The active-touch check
++			// also covers engines that order their finger-up contextmenu before touchend,
++			// no matter how long the user held past the initial suppression window.
++			e.preventDefault();
++			e.stopImmediatePropagation();
++			return;
++		}
++		// Composery: the browser produced its own contextmenu for this touch (a long-press
++		// outside every Gesture target, or an editable field) - the during-hold timer and
++		// the release-time branch must stand down or the menu doubles, and the release must
++		// not read as a tap.
++		for (const id in this.activeTouches) {
++			const data = this.activeTouches[Number(id)];
++			this.clearContextMenuTimer(data);
++			data.contextMenuFired = true;
++		}
++	}
++
++	private onReleaseMouseEcho(e: MouseEvent): void {
++		// Composery: emulated-mouse echo of a long-press release whose menu is already
++		// open - a tap-like click here would land outside the menu and dismiss it.
++		if (e.isTrusted && Date.now() < this.suppressNativeContextMenuUntil) {
++			e.preventDefault();
++			e.stopImmediatePropagation();
++		}
++	}
++
++	private fireFallbackContextMenu(data: TouchData): void {
++		// Composery: most workbench surfaces already listen for the platform contextmenu
++		// event. Re-fire every long-press through that one bubbling path so they all get the
++		// same behavior. Keep text controls native; window.ts's mainContainer listener still
++		// stops whatever no one handles.
++		const pageX = data.rollingPageX.at(-1)!;
++		const pageY = data.rollingPageY.at(-1)!;
++		const clientX = pageX - mainWindow.scrollX;
++		const clientY = pageY - mainWindow.scrollY;
++		let target: Element | null = data.initialTarget instanceof Element && data.initialTarget.isConnected ? data.initialTarget : null;
++		if (!target) {
++			target = mainWindow.document.elementFromPoint(clientX, clientY);
++		}
++		if (!target || DomUtils.isEditableElement(target)) {
++			return; // editable fields belong to the OS text-selection toolbar
++		}
++		// The hold can re-render the pressed DOM (the editor word-selects mid-hold).
++		// Keep End on the same live target that receives this event.
++		data.initialTarget = target;
++		data.syntheticContextMenu = true;
++		this.suppressNativeContextMenuUntil = Date.now() + 500;
++		target.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, view: mainWindow, clientX, clientY }));
++	}
++
+ 	private newGestureEvent(type: string, initialTarget?: EventTarget): GestureEvent {
+ 		const event = document.createEvent('CustomEvent') as unknown as GestureEvent;
+ 		event.initEvent(type, false, true);
+@@ -272,8 +426,8 @@ export class Gesture extends Disposable {
+ 
+ 			this._lastSetTapCountTime = currentTime;
+ 			event.tapCount = setTapCount;
+-		} else if (event.type === EventType.Change || event.type === EventType.Contextmenu) {
+-			// tap is canceled by scrolling or context menu
++		} else if (event.type === EventType.Change) {
++			// tap is canceled by scrolling
+ 			this._lastSetTapCountTime = 0;
+ 		}
+ 
+@@ -306,7 +460,8 @@ export class Gesture extends Disposable {
+ 		}
+ 	}
+ 
+-	private inertia(targetWindow: Window, dispatchTo: readonly EventTarget[], t1: number, vX: number, dirX: number, x: number, vY: number, dirY: number, y: number): void {
++	private inertia(targetWindow: Window, dispatchTo: readonly EventTarget[], t1: number, vX: number, dirX: number, x: number, vY: number, dirY: number, y: number, initialTarget?: EventTarget): void {
++		this.inertiaTargets = dispatchTo;
+ 		this.handle = DomUtils.scheduleAtNextAnimationFrame(targetWindow, () => {
+ 			const now = Date.now();
+ 
+@@ -329,13 +484,18 @@ export class Gesture extends Disposable {
+ 			}
+ 
+ 			// dispatch translation event
+-			const evt = this.newGestureEvent(EventType.Change);
++			const evt = this.newGestureEvent(EventType.Change, initialTarget);
+ 			evt.translationX = delta_pos_x;
+ 			evt.translationY = delta_pos_y;
+ 			dispatchTo.forEach(d => d.dispatchEvent(evt));
+ 
+ 			if (!stopped) {
+-				this.inertia(targetWindow, dispatchTo, now, vX, dirX, x + delta_pos_x, vY, dirY, y + delta_pos_y);
++				this.inertia(targetWindow, dispatchTo, now, vX, dirX, x + delta_pos_x, vY, dirY, y + delta_pos_y, initialTarget);
++			} else {
++				// Composery: the fling ran out on its own - upstream never cleared the handle,
++				// so every later touch would read as a fling catch. The next touch is a tap.
++				this.handle = null;
++				this.inertiaTargets = undefined;
+ 			}
+ 		});
+ 	}
+@@ -354,6 +514,33 @@ export class Gesture extends Disposable {
+ 
+ 			const data = this.activeTouches[touch.identifier];
+ 
++			// Composery: after the during-hold menu fired the touch is spent - no more panning
++			// - except when the verdict was wrong: janky event delivery can hold a real pan's
++			// moves until after the hold timer fired (the settings list on a busy phone), and
++			// eating them leaves scrolling dead. The event timeStamps carry the finger's true
++			// timing: if it was panning inside the hold window, revert the fallback. Owners
++			// that consumed the hold keep it - that drag extends the editor's word-selection.
++			if (data.contextMenuFired) {
++				if (data.syntheticContextMenu
++					&& e.timeStamp - data.initialEventTimeStamp < Gesture.HOLD_DELAY
++					&& Math.hypot(data.initialPageX - touch.pageX, data.initialPageY - touch.pageY) >= PAN_THRESHOLD) {
++					data.contextMenuFired = false;
++					data.syntheticContextMenu = false;
++					this.suppressNativeContextMenuUntil = 0;
++					// ContextMenuHandler closes on any window mousedown outside its menu -
++					// exactly the lever for the menu the fallback may have opened mid-pan.
++					mainWindow.dispatchEvent(new MouseEvent('mousedown'));
++				} else {
++					// A spent touch is still a gesture - no more panning after the
++					// during-hold menu fired.
++					continue;
++				}
++			}
++			if (!data.tapCancelled && Math.hypot(data.initialPageX - touch.pageX, data.initialPageY - touch.pageY) >= PAN_THRESHOLD) {
++				data.tapCancelled = true;
++				this.clearContextMenuTimer(data);
++			}
++
+ 			const evt = this.newGestureEvent(EventType.Change, data.initialTarget);
+ 			evt.translationX = touch.pageX - data.rollingPageX.at(-1)!;
+ 			evt.translationY = touch.pageY - data.rollingPageY.at(-1)!;
+--- a/lib/vscode/src/vs/base/browser/ui/contextview/contextview.ts
++++ b/lib/vscode/src/vs/base/browser/ui/contextview/contextview.ts
+@@ -3,12 +3,11 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
+-import { BrowserFeatures } from '../../canIUse.js';
+ import * as DOM from '../../dom.js';
+ import { StandardMouseEvent } from '../../mouseEvent.js';
++import { isTouch } from '../../touchGate.js';
+ import { Disposable, DisposableStore, IDisposable, toDisposable } from '../../../common/lifecycle.js';
+ import { AnchorAlignment, AnchorAxisAlignment, AnchorPosition, IRect, layout2d } from '../../../common/layout.js';
+-import * as platform from '../../../common/platform.js';
+ import { OmitOptional } from '../../../common/types.js';
+ import './contextview.css';
+ 
+@@ -217,7 +216,12 @@ export class ContextView extends Disposable {
+ 			return;
+ 		}
+ 
+-		if (this.delegate!.canRelayout === false && !(platform.isIOS && BrowserFeatures.pointerEvents)) {
++		// Composery: a menu taking focus from an editor or terminal hides the on-screen
++		// keyboard, which resizes the workbench (interactive-widget=resizes-content) - hiding
++		// here would dismiss the just-opened menu, and its focus restore would then pop the
++		// keyboard (and this resize) right back. iOS was already exempt upstream for its soft
++		// keyboard; gate every touch device.
++		if (this.delegate!.canRelayout === false && !isTouch(DOM.getWindow(this.view))) {
+ 			this.hide();
+ 			return;
+ 		}
+--- a/lib/vscode/src/vs/base/browser/ui/inputbox/inputBox.ts
++++ b/lib/vscode/src/vs/base/browser/ui/inputbox/inputBox.ts
+@@ -184,6 +184,10 @@ export class InputBox extends Widget {
+ 		} else {
+ 			this.input.type = this.options.type || 'text';
+ 			this.input.setAttribute('wrap', 'off');
++			// Composery: single-line inputs submit on Enter - ask soft keyboards for a
++			// newline key, whose line-break commit ImeEnterFallback replays as a real
++			// Enter. An action key ("go"/"send") commits no text, so nothing to replay.
++			this.input.setAttribute('enterkeyhint', 'enter');
+ 		}
+ 
+ 		if (this.ariaLabel) {
+--- a/lib/vscode/src/vs/base/browser/ui/list/listView.ts
++++ b/lib/vscode/src/vs/base/browser/ui/list/listView.ts
+@@ -4,7 +4,7 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ import { DataTransfers, IDragAndDropData } from '../../dnd.js';
+-import { addDisposableListener, animate, Dimension, getActiveElement, getContentHeight, getContentWidth, getDocument, getTopLeftOffset, getWindow, isAncestor, isHTMLElement, isSVGElement, scheduleAtNextAnimationFrame } from '../../dom.js';
++import { addDisposableListener, animate, Dimension, getActiveElement, getContentHeight, getContentWidth, getDocument, getTopLeftOffset, getWindow, isAncestor, isEditableElement, isHTMLElement, isSVGElement, scheduleAtNextAnimationFrame } from '../../dom.js';
+ import { DomEmitter } from '../../event.js';
+ import { IMouseWheelEvent } from '../../mouseEvent.js';
+ import { EventType as TouchEventType, Gesture, GestureEvent } from '../../touch.js';
+@@ -308,6 +308,13 @@ export class ListView<T> implements IListView<T> {
+ 	private _scrollHeight: number = 0;
+ 	private scrollableElementUpdateDisposable: IDisposable | null = null;
+ 	private scrollableElementWidthDelayer = new Delayer<void>(50);
++	// Composery: the item whose rendered row is kept alive outside the render range
++	// because it owns DOM focus. Keep the item, not its index: splices move items.
++	private focusPinnedItem: IItem<T> | undefined;
++	// Snapshot before touch focus: Android WebView can scroll a list before the IME
++	// resize reaches layout(), so current scrollTop is already too late there.
++	private touchFocusScrollAnchor: { readonly element: HTMLElement; scrollTop: number } | undefined;
++
+ 	private splicing = false;
+ 	private dragOverAnimationDisposable: IDisposable | undefined;
+ 	private dragOverAnimationStopDisposable: IDisposable = Disposable.None;
+@@ -446,12 +453,16 @@ export class ListView<T> implements IListView<T> {
+ 		this.disposables.add(addDisposableListener(this.rowsContainer, TouchEventType.Change, e => this.onTouchChange(e as GestureEvent)));
+ 
+ 		this.disposables.add(addDisposableListener(this.scrollableElement.getDomNode(), 'scroll', e => {
+-			// Make sure the active element is scrolled into view
++			// The browser scrolls this outer element when focus or the on-screen keyboard
++			// tries to reveal a control. Reset that incidental scroll, then reveal only the
++			// distance the control is actually outside the list viewport. Mirroring the full
++			// browser scroll into the virtual list makes an already-visible settings input
++			// jump to the top when an Android WebView shrinks for the keyboard.
+ 			const element = (e.target as HTMLElement);
+-			const scrollValue = element.scrollTop;
+ 			element.scrollTop = 0;
+-			if (options.scrollToActiveElement) {
+-				this.setScrollTop(this.scrollTop + scrollValue);
++			const activeElement = getActiveElement();
++			if (options.scrollToActiveElement && activeElement instanceof HTMLElement && element.contains(activeElement)) {
++				this._scrollToActiveElement(activeElement, element);
+ 			}
+ 		}));
+ 
+@@ -477,9 +488,29 @@ export class ListView<T> implements IListView<T> {
+ 		}
+ 	}
+ 
++	// Everything that keeps a focused control revealed, under the one option that asks
++	// for it. The touch anchor below belongs here rather than in the constructor: a list
++	// that opted out of revealing must not have its scroll moved by a keyboard resize.
+ 	private _setupFocusObserver(container: HTMLElement): void {
++		this.disposables.add(addDisposableListener(this.rowsContainer, 'pointerdown', e => {
++			const target = e.target;
++			this.touchFocusScrollAnchor = e.pointerType === 'touch' && target instanceof HTMLElement && isEditableElement(target)
++				? { element: target, scrollTop: this.scrollTop }
++				: undefined;
++		}, true));
++		const resizeObserver = new (getWindow(this.domNode).ResizeObserver)(() => this._restoreTouchFocusScrollAnchor());
++		resizeObserver.observe(this.domNode);
++		this.disposables.add(toDisposable(() => resizeObserver.disconnect()));
++
+ 		this.disposables.add(addDisposableListener(container, 'focus', () => {
+ 			const element = getActiveElement() as HTMLElement | null;
++			const anchor = this.touchFocusScrollAnchor;
++			if (anchor?.element === element) {
++				this.setScrollTop(anchor.scrollTop);
++			} else {
++				this.touchFocusScrollAnchor = undefined;
++			}
++
+ 			if (this.activeElement !== element && element !== null) {
+ 				this.activeElement = element;
+ 				this._scrollToActiveElement(this.activeElement, container);
+@@ -487,17 +518,23 @@ export class ListView<T> implements IListView<T> {
+ 		}, true));
+ 	}
+ 
++	private _getActiveElementRevealDelta(elementTop: number, elementBottom: number, viewportTop: number, viewportBottom: number): number {
++		if (elementTop < viewportTop) {
++			return elementTop - viewportTop;
++		}
++		if (elementBottom > viewportBottom) {
++			return elementBottom - viewportBottom;
++		}
++		return 0;
++	}
++
+ 	private _scrollToActiveElement(element: HTMLElement, container: HTMLElement) {
+-		// The scroll event on the list only fires when scrolling down.
+-		// If the active element is above the viewport, we need to scroll up.
+ 		const containerRect = container.getBoundingClientRect();
+ 		const elementRect = element.getBoundingClientRect();
+ 
+-		const topOffset = elementRect.top - containerRect.top;
+-
+-		if (topOffset < 0) {
+-			// Scroll up
+-			this.setScrollTop(this.scrollTop + topOffset);
++		const revealDelta = this._getActiveElementRevealDelta(elementRect.top, elementRect.bottom, containerRect.top, containerRect.bottom);
++		if (revealDelta !== 0) {
++			this.setScrollTop(this.scrollTop + revealDelta);
+ 		}
+ 	}
+ 
+@@ -631,6 +668,13 @@ export class ListView<T> implements IListView<T> {
+ 	}
+ 
+ 	private _splice(start: number, deleteCount: number, elements: readonly T[] = []): T[] {
++		// A splice before the focused item only moves it; deleting that exact item is
++		// the one mutation allowed to release its focused row.
++		const focusPinnedIndex = this.focusPinnedItem ? this.items.indexOf(this.focusPinnedItem) : -1;
++		if (focusPinnedIndex >= start && focusPinnedIndex < start + deleteCount) {
++			this._disposeFocusPinnedItem();
++		}
++
+ 		const previousRenderRange = this.getRenderRange(this.lastRenderTop, this.lastRenderHeight);
+ 		const deleteRange = { start, end: start + deleteCount };
+ 		const removeRange = Range.intersect(previousRenderRange, deleteRange);
+@@ -696,6 +740,17 @@ export class ListView<T> implements IListView<T> {
+ 			deleted = splice(this.items, start, deleteCount, inserted);
+ 		}
+ 
++		// The pinned item survived, but its absolute position and data-index may have
++		// moved. Update only row metadata; re-rendering would replace the focused control.
++		if (this.focusPinnedItem) {
++			const index = this.items.indexOf(this.focusPinnedItem);
++			if (index >= 0) {
++				this.updateItemInDOM(this.focusPinnedItem, index);
++			} else {
++				this.focusPinnedItem = undefined;
++			}
++		}
++
+ 		const delta = elements.length - deleteCount;
+ 		const renderRange = this.getRenderRange(this.lastRenderTop, this.lastRenderHeight);
+ 		const renderedRestRange = shift(previousRenderedRestRange, delta);
+@@ -719,6 +774,9 @@ export class ListView<T> implements IListView<T> {
+ 
+ 		for (const range of insertRanges) {
+ 			for (let i = range.end - 1; i >= range.start; i--) {
++				if (this._restoreFocusPinnedItem(i)) {
++					continue;
++				}
+ 				const item = this.items[i];
+ 				const rows = rowsToDispose.get(item.templateId);
+ 				const row = rows?.pop();
+@@ -903,10 +961,65 @@ export class ListView<T> implements IListView<T> {
+ 		}
+ 	}
+ 
++	private _restoreTouchFocusScrollAnchor(): void {
++		const anchor = this.touchFocusScrollAnchor;
++		if (!anchor || getActiveElement() !== anchor.element || !this.rowsContainer.contains(anchor.element)) {
++			this.touchFocusScrollAnchor = undefined;
++			return;
++		}
++
++		this.setScrollTop(anchor.scrollTop);
++		this._scrollToActiveElement(anchor.element, this.domNode);
++		anchor.scrollTop = this.scrollTop;
++	}
++
++	private _disposeFocusPinnedItem(onScroll?: boolean): void {
++		const item = this.focusPinnedItem;
++		if (!item) {
++			return;
++		}
++
++		const index = this.items.indexOf(item);
++		this.focusPinnedItem = undefined;
++		if (index >= 0 && item.row) {
++			this.removeItemFromDOM(index, onScroll);
++		}
++	}
++
++	private _releaseInactiveFocusPinnedItem(renderRange: IRange, activeElement: Element | null, onScroll?: boolean): void {
++		const item = this.focusPinnedItem;
++		if (!item) {
++			return;
++		}
++
++		const index = this.items.indexOf(item);
++		if (index < 0) {
++			this.focusPinnedItem = undefined;
++		} else if ((index < renderRange.start || index >= renderRange.end) && !item.row?.domNode.contains(activeElement)) {
++			this._disposeFocusPinnedItem(onScroll);
++		}
++	}
++
++	// A pinned row re-entering the normal range is already rendered and connected.
++	// Updating its position preserves the focused control; insertItemInDOM would call
++	// renderer.renderElement again and may replace that control mid-IME composition.
++	private _restoreFocusPinnedItem(index: number): boolean {
++		const item = this.items[index];
++		if (item !== this.focusPinnedItem || !item.row) {
++			return false;
++		}
++
++		this.updateItemInDOM(item, index);
++		this.focusPinnedItem = undefined;
++		return true;
++	}
++
+ 	// Render
+ 
+ 	protected render(previousRenderRange: IRange, renderTop: number, renderHeight: number, renderLeft: number | undefined, scrollWidth: number | undefined, updateItemsInDOM: boolean = false, onScroll: boolean = false): void {
+ 		const renderRange = this.getRenderRange(renderTop, renderHeight);
++		const activeElement = getActiveElement();
++		this._releaseInactiveFocusPinnedItem(renderRange, activeElement, onScroll);
+ 
+ 		const rangesToInsert = Range.relativeComplement(renderRange, previousRenderRange).reverse();
+ 		const rangesToRemove = Range.relativeComplement(previousRenderRange, renderRange);
+@@ -922,13 +1035,19 @@ export class ListView<T> implements IListView<T> {
+ 		this.cache.transact(() => {
+ 			for (const range of rangesToRemove) {
+ 				for (let i = range.start; i < range.end; i++) {
++					if (this.items[i].row?.domNode.contains(activeElement)) {
++						this.focusPinnedItem = this.items[i];
++						continue;
++					}
+ 					this.removeItemFromDOM(i, onScroll);
+ 				}
+ 			}
+ 
+ 			for (const range of rangesToInsert) {
+ 				for (let i = range.end - 1; i >= range.start; i--) {
+-					this.insertItemInDOM(i);
++					if (!this._restoreFocusPinnedItem(i)) {
++						this.insertItemInDOM(i);
++					}
+ 				}
+ 			}
+ 		});
+@@ -1126,7 +1245,10 @@ export class ListView<T> implements IListView<T> {
+ 	@memoize get onMouseOver(): Event<IListMouseEvent<T>> { return Event.map(this.disposables.add(new DomEmitter(this.domNode, 'mouseover')).event, e => this.toMouseEvent(e), this.disposables); }
+ 	@memoize get onMouseMove(): Event<IListMouseEvent<T>> { return Event.map(this.disposables.add(new DomEmitter(this.domNode, 'mousemove')).event, e => this.toMouseEvent(e), this.disposables); }
+ 	@memoize get onMouseOut(): Event<IListMouseEvent<T>> { return Event.map(this.disposables.add(new DomEmitter(this.domNode, 'mouseout')).event, e => this.toMouseEvent(e), this.disposables); }
+-	@memoize get onContextMenu(): Event<IListMouseEvent<T> | IListGestureEvent<T>> { return Event.any<IListMouseEvent<any> | IListGestureEvent<any>>(Event.map(this.disposables.add(new DomEmitter(this.domNode, 'contextmenu')).event, e => this.toMouseEvent(e), this.disposables), Event.map(this.disposables.add(new DomEmitter(this.domNode, TouchEventType.Contextmenu)).event, e => this.toGestureEvent(e), this.disposables)); }
++	// Composery: no gesture leg here - a long-press the page leaves unconsumed comes back
++	// through Gesture's native contextmenu re-fire and arrives via the mouse leg with real
++	// right-click semantics; a second leg would emit every touch context menu twice.
++	@memoize get onContextMenu(): Event<IListMouseEvent<T> | IListGestureEvent<T>> { return Event.map(this.disposables.add(new DomEmitter(this.domNode, 'contextmenu')).event, e => this.toMouseEvent(e), this.disposables); }
+ 	@memoize get onTouchStart(): Event<IListTouchEvent<T>> { return Event.map(this.disposables.add(new DomEmitter(this.domNode, 'touchstart')).event, e => this.toTouchEvent(e), this.disposables); }
+ 	@memoize get onTap(): Event<IListGestureEvent<T>> { return Event.map(this.disposables.add(new DomEmitter(this.rowsContainer, TouchEventType.Tap)).event, e => this.toGestureEvent(e), this.disposables); }
+ 
+@@ -1174,6 +1296,7 @@ export class ListView<T> implements IListView<T> {
+ 	}
+ 
+ 	private onTouchChange(event: GestureEvent): void {
++		this.touchFocusScrollAnchor = undefined;
+ 		event.preventDefault();
+ 		event.stopPropagation();
+ 
+@@ -1540,6 +1663,8 @@ export class ListView<T> implements IListView<T> {
+ 	 */
+ 	protected _rerender(renderTop: number, renderHeight: number, inSmoothScrolling?: boolean): void {
+ 		const previousRenderRange = this.getRenderRange(renderTop, renderHeight);
++		const activeElement = getActiveElement();
++		this._releaseInactiveFocusPinnedItem(previousRenderRange, activeElement);
+ 
+ 		// Let's remember the second element's position, this helps in scrolling up
+ 		// and preserving a linear upwards scroll movement
+@@ -1581,7 +1706,9 @@ export class ListView<T> implements IListView<T> {
+ 
+ 				for (const range of unrenderRanges) {
+ 					for (let i = range.start; i < range.end; i++) {
+-						if (this.items[i].row) {
++						if (this.items[i].row?.domNode.contains(activeElement)) {
++							this.focusPinnedItem = this.items[i];
++						} else if (this.items[i].row) {
+ 							this.removeItemFromDOM(i);
+ 						}
+ 					}
+@@ -1591,7 +1718,9 @@ export class ListView<T> implements IListView<T> {
+ 
+ 				for (const range of renderRanges) {
+ 					for (let i = range.end - 1; i >= range.start; i--) {
+-						this.insertItemInDOM(i);
++						if (!this._restoreFocusPinnedItem(i)) {
++							this.insertItemInDOM(i);
++						}
+ 					}
+ 				}
+ 
+--- a/lib/vscode/src/vs/base/browser/ui/list/listWidget.ts
++++ b/lib/vscode/src/vs/base/browser/ui/list/listWidget.ts
+@@ -9,7 +9,7 @@ import { createStyleSheet } from '../../domStylesheets.js';
+ import { asCssValueWithDefault } from '../../cssValue.js';
+ import { DomEmitter } from '../../event.js';
+ import { IKeyboardEvent, StandardKeyboardEvent } from '../../keyboardEvent.js';
+-import { Gesture } from '../../touch.js';
++import { EventType as TouchEventType, Gesture } from '../../touch.js';
+ import { alert, AriaRole } from '../aria/aria.js';
+ import { CombinedSpliceable } from './splice.js';
+ import { ScrollableElementChangeOptions } from '../scrollbar/scrollableElementOptions.js';
+@@ -742,7 +742,16 @@ export class MouseController<T> implements IDisposable {
+ 			return;
+ 		}
+ 
+-		if (getActiveElement() !== e.browserEvent.target) {
++		// Composery: a touch here may be the start of a scroll - stealing focus at touchstart
++		// would close the on-screen keyboard mid-typing (the quick input filter, search
++		// inputs, the editor under the suggest widget) for a gesture that never meant to
++		// leave the field. A tap still activates the row through onViewPointer.
++		const active = getActiveElement();
++		if (e.browserEvent.type === 'touchstart' && active && isEditableElement(active)) {
++			return;
++		}
++
++		if (active !== e.browserEvent.target) {
+ 			this.list.domFocus();
+ 		}
+ 	}
+@@ -765,6 +774,14 @@ export class MouseController<T> implements IDisposable {
+ 			return;
+ 		}
+ 
++		// Composery: Gesture taps are dispatched to every registered ancestor in turn
++		// rather than bubbled, so an inline control's Tap handler cannot stop this one
++		// the way its click handler stops a click's propagation - but its preventDefault
++		// does survive the redispatch. A consumed tap is not the row's to handle.
++		if (e.browserEvent.type === TouchEventType.Tap && e.browserEvent.defaultPrevented) {
++			return;
++		}
++
+ 		if (e.browserEvent.isHandledByList) {
+ 			return;
+ 		}
+@@ -802,6 +819,11 @@ export class MouseController<T> implements IDisposable {
+ 			return;
+ 		}
+ 
++		// Composery: see onViewPointer - a tap consumed by an inline control stays consumed.
++		if (e.browserEvent.type === TouchEventType.Tap && e.browserEvent.defaultPrevented) {
++			return;
++		}
++
+ 		if (this.isSelectionChangeEvent(e)) {
+ 			return;
+ 		}
+--- a/lib/vscode/src/vs/base/browser/ui/menu/menu.ts
++++ b/lib/vscode/src/vs/base/browser/ui/menu/menu.ts
+@@ -256,6 +256,13 @@ export class Menu extends ActionBar {
+ 
+ 		// Support scroll on menu drag
+ 		this._register(addDisposableListener(menuElement, TouchEventType.Change, e => {
++			// Gesture dispatches to every registered ancestor target. A submenu drag must not also
++			// scroll its parent: parent scrolling intentionally dismisses the open submenu.
++			const targetMenu = (e.initialTarget as Element | null)?.closest?.('.monaco-menu');
++			if (targetMenu && targetMenu !== this.menuElement) {
++				return;
++			}
++
+ 			EventHelper.stop(e, true);
+ 
+ 			const scrollTop = this.scrollableElement.getScrollPosition().scrollTop;
+@@ -532,6 +539,14 @@ class BaseMenuActionViewItem extends BaseActionViewItem {
+ 
+ 		this.container = container;
+ 
++		// A long touch re-fires the same contextmenu a native control would receive, so a
++		// menu item held a beat too long still activates. A real mouse right-click must not.
++		this._register(addDisposableListener(this.element, EventType.CONTEXT_MENU, e => {
++			if (!e.isTrusted || e.pointerType === 'touch') {
++				this.onClick(e, true);
++			}
++		}, true));
++
+ 		this.item = append(this.element, $('a.action-menu-item'));
+ 		if (this._action.id === Separator.ID) {
+ 			// A separator is a presentation item
+@@ -809,6 +824,10 @@ class SubmenuMenuActionViewItem extends BaseMenuActionViewItem {
+ 			}
+ 		}));
+ 
++		// Focus-out can be transient while a deeper submenu takes focus. Once focus lands anywhere
++		// in this submenu branch, a pending delayed cleanup no longer applies.
++		this._register(addDisposableListener(this.element, EventType.FOCUS_IN, () => this.hideScheduler.cancel()));
++
+ 		this._register(this.parentData.parent.onScroll(() => {
+ 			if (this.parentData.submenu === this.mysubmenu) {
+ 				this.parentData.parent.focus(false);
+@@ -833,7 +852,10 @@ class SubmenuMenuActionViewItem extends BaseMenuActionViewItem {
+ 		EventHelper.stop(e, true);
+ 
+ 		this.cleanupExistingSubmenu(false);
+-		this.createSubmenu(true);
++		// Pointer activation should not synthesize keyboard focus inside the submenu. Derive that
++		// from the event instead of guessing the user's current input from a media query.
++		const eventType = (e as { type?: string }).type;
++		this.createSubmenu(eventType !== TouchEventType.Tap && eventType !== EventType.CONTEXT_MENU);
+ 	}
+ 
+ 	private cleanupExistingSubmenu(force: boolean): void {
+--- a/lib/vscode/src/vs/base/browser/ui/menu/menubar.ts
++++ b/lib/vscode/src/vs/base/browser/ui/menu/menubar.ts
+@@ -8,6 +8,7 @@ import * as DOM from '../../dom.js';
+ import { StandardKeyboardEvent } from '../../keyboardEvent.js';
+ import { StandardMouseEvent } from '../../mouseEvent.js';
+ import { EventType, Gesture, GestureEvent } from '../../touch.js';
++import { isTouch } from '../../touchGate.js';
+ import { cleanMnemonic, HorizontalDirection, IMenuDirection, IMenuOptions, IMenuStyles, Menu, MENU_ESCAPED_MNEMONIC_REGEX, MENU_MNEMONIC_REGEX, VerticalDirection } from './menu.js';
+ import { ActionRunner, IAction, IActionRunner, Separator, SubmenuAction } from '../../../common/actions.js';
+ import { asArray } from '../../../common/arrays.js';
+@@ -169,6 +170,18 @@ export class MenuBar extends Disposable {
+ 		this._register(DOM.addDisposableListener(this.container, DOM.EventType.FOCUS_OUT, (e) => {
+ 			const event = e;
+ 
++			// Composery: on touch, opening a menu from the editor or terminal blurred their
++			// hidden input, so the on-screen keyboard dismisses - and when it finishes iOS
++			// pulls DOM focus out of the just-opened menu to the body, arriving here with no
++			// relatedTarget (the same shape as the webview case below). Unfocusing then would
++			// close the menu the user just opened and drop the titlebar's focused state (the
++			// Android fix's contextview/menubarControl gates don't cover this focus path).
++			// A real tap-away moves focus onto the tapped element - relatedTarget is set - and
++			// still falls through to the branches below, so it keeps closing the menu.
++			if (this.isOpen && !event.relatedTarget && isTouch(DOM.getWindow(this.container))) {
++				return;
++			}
++
+ 			// We are losing focus and there is no related target, e.g. webview case
+ 			if (!event.relatedTarget) {
+ 				this.setUnfocusedState();
+--- a/lib/vscode/src/vs/base/browser/ui/selectBox/selectBox.ts
++++ b/lib/vscode/src/vs/base/browser/ui/selectBox/selectBox.ts
+@@ -6,6 +6,8 @@
+ import { Event } from '../../../common/event.js';
+ import { IDisposable } from '../../../common/lifecycle.js';
+ import { isMacintosh } from '../../../common/platform.js';
++import { isTouch } from '../../touchGate.js';
++import { mainWindow } from '../../window.js';
+ import { MarkdownActionHandler } from '../../markdownRenderer.js';
+ import { IContextViewProvider } from '../contextview/contextview.js';
+ import { IListStyles, unthemedListStyles } from '../list/listWidget.js';
+@@ -93,7 +95,9 @@ export class SelectBox extends Widget implements ISelectBoxDelegate {
+ 		super();
+ 
+ 		// Default to native SelectBox for OSX unless overridden
+-		if (isMacintosh && !selectBoxOptions?.useCustomDrawn) {
++		// Composery: on touch the native select always wins - the platform picker beats any
++		// custom-drawn list under a finger - so touch overrides even an explicit useCustomDrawn.
++		if (isTouch(mainWindow) || (isMacintosh && !selectBoxOptions?.useCustomDrawn)) {
+ 			this.selectBoxDelegate = new SelectBoxNative(options, selected, styles, selectBoxOptions);
+ 		} else {
+ 			this.selectBoxDelegate = new SelectBoxList(options, selected, contextViewProvider, styles, selectBoxOptions);
+--- a/lib/vscode/src/vs/base/browser/ui/selectBox/selectBoxNative.ts
++++ b/lib/vscode/src/vs/base/browser/ui/selectBox/selectBoxNative.ts
+@@ -4,7 +4,7 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ import * as dom from '../../dom.js';
+-import { EventType, Gesture } from '../../touch.js';
++import { Gesture } from '../../touch.js';
+ import { ISelectBoxDelegate, ISelectBoxOptions, ISelectBoxStyles, ISelectData, ISelectOptionItem } from './selectBox.js';
+ import * as arrays from '../../../common/arrays.js';
+ import { Emitter, Event } from '../../../common/event.js';
+@@ -48,12 +48,11 @@ export class SelectBoxNative extends Disposable implements ISelectBoxDelegate {
+ 	}
+ 
+ 	private registerListeners() {
+-		this._register(Gesture.addTarget(this.selectElement));
+-		[EventType.Tap].forEach(eventType => {
+-			this._register(dom.addDisposableListener(this.selectElement, eventType, (e) => {
+-				this.selectElement.focus();
+-			}));
+-		});
++		// Composery: only the untouched native activation opens the OS picker - no JS can
++		// substitute for it. A Gesture target's touchend is preventDefault()ed (killing the
++		// synthesized click), and an ancestor target - e.g. the panel title area hosting the
++		// terminal switcher - does the same, so opt this element out of Gesture entirely.
++		this._register(Gesture.ignoreTarget(this.selectElement));
+ 
+ 		this._register(dom.addStandardDisposableListener(this.selectElement, 'click', (e) => {
+ 			dom.EventHelper.stop(e, true);
+--- a/lib/vscode/src/vs/base/browser/ui/tree/abstractTree.ts
++++ b/lib/vscode/src/vs/base/browser/ui/tree/abstractTree.ts
+@@ -9,6 +9,7 @@ import { createStyleSheet } from '../../domStylesheets.js';
+ import { asCssValueWithDefault } from '../../cssValue.js';
+ import { DomEmitter } from '../../event.js';
+ import { StandardKeyboardEvent } from '../../keyboardEvent.js';
++import { EventType as TouchEventType } from '../../touch.js';
+ import { ActionBar } from '../actionbar/actionbar.js';
+ import { IContextViewProvider } from '../contextview/contextview.js';
+ import { FindInput } from '../findinput/findInput.js';
+@@ -2379,6 +2380,13 @@ class TreeNodeListMouseController<T, TFilterData, TRef> extends MouseController<
+ 			return;
+ 		}
+ 
++		// Composery: a tap consumed by an inline control (its Tap handler preventDefaults)
++		// must not toggle or activate the node - Gesture redispatches the same event to
++		// every registered ancestor, so stopPropagation alone cannot protect the row.
++		if (e.browserEvent.type === TouchEventType.Tap && e.browserEvent.defaultPrevented) {
++			return;
++		}
++
+ 		if (e.browserEvent.isHandledByList) {
+ 			return;
+ 		}
+--- a/lib/vscode/src/vs/editor/browser/controller/editContext/native/nativeEditContext.ts
++++ b/lib/vscode/src/vs/editor/browser/controller/editContext/native/nativeEditContext.ts
+@@ -238,12 +238,12 @@ export class NativeEditContext extends AbstractEditContext {
+ 		this._register(IME.onDidChange(() => {
+ 			if (IME.enabled && reenableTracking) {
+ 				this._focusTracker.resume();
+-				this.domNode.focus();
++				this.domNode.domNode.focus({ preventScroll: true });
+ 				reenableTracking = false;
+ 			}
+ 			if (!IME.enabled && this.isFocused()) {
+ 				this._focusTracker.pause();
+-				this._imeTextArea.focus();
++				this._imeTextArea.domNode.focus({ preventScroll: true });
+ 				reenableTracking = true;
+ 			}
+ 		}));
+@@ -569,7 +569,16 @@ export class NativeEditContext extends AbstractEditContext {
+ 			width = parentBounds.width - contentLeft;
+ 		}
+ 
+-		const selectionBounds = new DOMRect(left, top, width, height);
++		// Clamp to the editor's box: the browser reveals these bounds when the on-screen
++		// keyboard shows, and an off-viewport rect (multi-line selections span their full
++		// height; a horizontally scrolled-out caret keeps a stale left) makes it scroll
++		// overflow:hidden ancestors and pan the visual viewport - the workbench slides
++		// off screen.
++		const boundsLeft = Math.min(Math.max(left, parentBounds.left), parentBounds.right);
++		const boundsTop = Math.min(Math.max(top, parentBounds.top), parentBounds.bottom);
++		const boundsRight = Math.min(Math.max(left + width, parentBounds.left), parentBounds.right);
++		const boundsBottom = Math.min(Math.max(top + height, parentBounds.top), parentBounds.bottom);
++		const selectionBounds = new DOMRect(boundsLeft, boundsTop, boundsRight - boundsLeft, boundsBottom - boundsTop);
+ 		this._editContext.updateSelectionBounds(selectionBounds);
+ 		this._editContext.updateControlBounds(selectionBounds);
+ 	}
+--- a/lib/vscode/src/vs/editor/browser/controller/editContext/native/nativeEditContextUtils.ts
++++ b/lib/vscode/src/vs/editor/browser/controller/editContext/native/nativeEditContextUtils.ts
+@@ -61,7 +61,9 @@ export class FocusTracker extends Disposable {
+ 	}
+ 
+ 	public focus(): void {
+-		this._domNode.focus();
++		// The editor does its own revealing; the browser's focus reveal scrolls
++		// overflow:hidden workbench ancestors and, on mobile, pans the visual viewport.
++		this._domNode.focus({ preventScroll: true });
+ 		this.refreshFocusState();
+ 	}
+ 
+--- a/lib/vscode/src/vs/editor/browser/controller/editContext/textArea/textAreaEditContextInput.ts
++++ b/lib/vscode/src/vs/editor/browser/controller/editContext/textArea/textAreaEditContextInput.ts
+@@ -772,11 +772,19 @@ export class TextAreaWrapper extends Disposable implements ICompleteTextAreaWrap
+ 		// console.log('reason: ' + reason + ', setSelectionRange: ' + selectionStart + ' -> ' + selectionEnd);
+ 
+ 		if (currentIsFocused) {
+-			// No need to focus, only need to change the selection range
+-			this.setIgnoreSelectionChangeTime('setSelectionRange');
+-			textArea.setSelectionRange(selectionStart, selectionEnd);
++			// No need to focus, only need to change the selection range - but Safari also
++			// reveals the in-textarea caret of a focused textarea, scrolling overflow:hidden
++			// ancestors; undo that reveal like the unfocused path below does.
++			try {
++				const scrollState = this._saveParentsScroll(textArea);
++				this.setIgnoreSelectionChangeTime('setSelectionRange');
++				textArea.setSelectionRange(selectionStart, selectionEnd);
++				this._restoreParentsScroll(textArea, scrollState);
++			} catch (e) {
++				// Sometimes IE throws when setting selection (e.g. textarea is off-DOM)
++			}
+ 			if (browser.isFirefox && activeWindow.parent !== activeWindow) {
+-				textArea.focus();
++				textArea.focus({ preventScroll: true });
+ 			}
+ 			return;
+ 		}
+@@ -784,13 +792,35 @@ export class TextAreaWrapper extends Disposable implements ICompleteTextAreaWrap
+ 		// If the focus is outside the textarea, browsers will try really hard to reveal the textarea.
+ 		// Here, we try to undo the browser's desperate reveal.
+ 		try {
+-			const scrollState = dom.saveParentsScrollTop(textArea);
++			const scrollState = this._saveParentsScroll(textArea);
+ 			this.setIgnoreSelectionChangeTime('setSelectionRange');
+-			textArea.focus();
++			textArea.focus({ preventScroll: true });
+ 			textArea.setSelectionRange(selectionStart, selectionEnd);
+-			dom.restoreParentsScrollTop(textArea, scrollState);
++			this._restoreParentsScroll(textArea, scrollState);
+ 		} catch (e) {
+ 			// Sometimes IE throws when setting selection (e.g. textarea is off-DOM)
+ 		}
+ 	}
++
++	// dom.saveParentsScrollTop/restoreParentsScrollTop cover only the vertical axis; the
++	// browser's reveal also scrolls ancestors horizontally (wide unwrapped lines).
++	private _saveParentsScroll(node: Element): { top: number; left: number }[] {
++		const state: { top: number; left: number }[] = [];
++		for (let el: Element | null = node; el && el.nodeType === el.ELEMENT_NODE; el = el.parentElement) {
++			state.push({ top: el.scrollTop, left: el.scrollLeft });
++		}
++		return state;
++	}
++
++	private _restoreParentsScroll(node: Element, state: { top: number; left: number }[]): void {
++		let i = 0;
++		for (let el: Element | null = node; el && el.nodeType === el.ELEMENT_NODE && i < state.length; el = el.parentElement, i++) {
++			if (el.scrollTop !== state[i].top) {
++				el.scrollTop = state[i].top;
++			}
++			if (el.scrollLeft !== state[i].left) {
++				el.scrollLeft = state[i].left;
++			}
++		}
++	}
+ }
+--- a/lib/vscode/src/vs/editor/browser/controller/pointerHandler.ts
++++ b/lib/vscode/src/vs/editor/browser/controller/pointerHandler.ts
+@@ -5,32 +5,78 @@
+ 
+ import { BrowserFeatures } from '../../../base/browser/canIUse.js';
+ import * as dom from '../../../base/browser/dom.js';
+-import { EventType, Gesture, GestureEvent } from '../../../base/browser/touch.js';
++import { EventType, Gesture, GestureEvent, PAN_THRESHOLD } from '../../../base/browser/touch.js';
+ import { mainWindow } from '../../../base/browser/window.js';
+ import { Disposable } from '../../../base/common/lifecycle.js';
+-import * as platform from '../../../base/common/platform.js';
++import { isTouch } from '../../../base/browser/touchGate.js';
++import { ITouchSelectionEdge, TouchSelectionEdges, TouchSelectionHandleKind, TouchSelectionHandles } from '../../../base/browser/touchSelectionHandles.js';
++import { softKeyboard } from '../../../base/browser/softKeyboard.js';
+ import { IPointerHandlerHelper, MouseHandler } from './mouseHandler.js';
++import { MouseTarget } from './mouseTarget.js';
+ import { NavigationCommandRevealType } from '../coreCommands.js';
+ import { IMouseTarget, MouseTargetType } from '../editorBrowser.js';
+ import { EditorMouseEvent, EditorPointerEventFactory } from '../editorDom.js';
+ import { ViewController } from '../view/viewController.js';
+ import { ViewContext } from '../../common/viewModel/viewContext.js';
++import * as viewEvents from '../../common/viewEvents.js';
+ import { TextAreaSyntethicEvents } from './editContext/textArea/textAreaEditContextInput.js';
++import { Selection } from '../../common/core/selection.js';
++import { TOUCH_SELECTION_MENU_HOLD_TIME, TouchPress, touchContextMenu } from './touchPress.js';
++import { ITouchPosition, touchDragAnchor, touchDragHandle, touchSelectionEdge, touchSelectionEdges } from './touchSelection.js';
+ 
+ /**
+  * Currently only tested on iOS 13/ iPadOS.
+  */
+ export class PointerEventHandler extends MouseHandler {
+ 	private _lastPointerType: string;
++	// The press itself decides what it means (touchPress.ts); what is kept here is what
++	// only the DOM can hold - where the finger is, and the timer that is the hold.
++	private _touchPress: {
++		readonly press: TouchPress;
++		readonly pageX: number;
++		readonly pageY: number;
++		menuTimer: number | undefined;
++	} | null;
++	private _primarySelection: Selection | null;
++	private _primaryModelSelection: Selection | null;
++	// Touch selection is driven entirely by the editor: the browser's own selection UI
++	// cannot work here - it aims at the focused element, and the editor's focused
++	// element is a hidden one-pixel input, not the rendered lines the finger is on.
++	// So a long-press selects the word through the model, and the shared touch handles
++	// adjust it - this class only says where the selection is and moves it.
++	private readonly _touchHandles: TouchSelectionHandles;
++	/** The end of the selection a handle drag holds still, in model coordinates. */
++	private _touchDragAnchor: ITouchPosition | null;
++	private _editorFocused: boolean;
++
+ 	constructor(context: ViewContext, viewController: ViewController, viewHelper: IPointerHandlerHelper) {
+ 		super(context, viewController, viewHelper);
+ 
+ 		this._register(Gesture.addTarget(this.viewHelper.linesContentDomNode));
++		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, EventType.Start, (e) => this.onTouchStart(e)));
++		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, EventType.End, () => this.onTouchEnd()));
+ 		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, EventType.Tap, (e) => this.onTap(e)));
+ 		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, EventType.Change, (e) => this.onChange(e)));
+-		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, EventType.Contextmenu, (e: MouseEvent) => this._onContextMenu(new EditorMouseEvent(e, false, this.viewHelper.viewDomNode), false)));
++		this._register(dom.addDisposableListener(this.viewHelper.viewDomNode, dom.EventType.CONTEXT_MENU, (e: MouseEvent) => this.onContextMenu(e), true));
+ 
+ 		this._lastPointerType = 'mouse';
++		this._touchPress = null;
++		this._primarySelection = null;
++		this._primaryModelSelection = null;
++		this._touchDragAnchor = null;
++		this._editorFocused = false;
++
++		this._touchHandles = this._register(new TouchSelectionHandles({
++			viewport: this.viewHelper.viewDomNode,
++			getEdges: () => this._getTouchSelectionEdges(),
++			startDrag: (kind) => this._startTouchSelectionDrag(kind),
++			dragTo: (x, y) => this._dragTouchSelectionTo(x, y),
++			stopDrag: () => { this._touchDragAnchor = null; },
++			scrollBy: (deltaY) => {
++				this._context.viewModel.viewLayout.deltaScrollNow(0, deltaY);
++				this.viewHelper.renderNow();
++			}
++		}));
+ 
+ 		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, 'pointerdown', (e: PointerEvent) => {
+ 			const pointerType = e.pointerType;
+@@ -53,18 +99,172 @@ export class PointerEventHandler extends MouseHandler {
+ 		this._register(pointerEvents.onPointerDown(this.viewHelper.viewDomNode, (e, pointerId) => this._onMouseDown(e, pointerId)));
+ 	}
+ 
++	public override dispose(): void {
++		this._clearTouchMenuTimer();
++		super.dispose();
++	}
++
++	private onTouchStart(event: GestureEvent): void {
++		this._lastPointerType = 'touch';
++		this._touchHandles.reveal();
++		this._clearTouchMenuTimer();
++		const target = this._createMouseTarget(new EditorMouseEvent(event, false, this.viewHelper.viewDomNode), false);
++		const modelPosition = target.position ? this._context.viewModel.coordinatesConverter.convertViewPositionToModelPosition(target.position) : null;
++		const press = new TouchPress({
++			startedOnText: target.type === MouseTargetType.CONTENT_TEXT,
++			startedInSelection: !!modelPosition && !!this._primaryModelSelection && !this._primaryModelSelection.isEmpty() && this._primaryModelSelection.containsPosition(modelPosition)
++		}, PAN_THRESHOLD);
++		this._touchPress = {
++			press,
++			pageX: event.pageX,
++			pageY: event.pageY,
++			// Long-press inside the existing selection asks for actions on it - the IDE
++			// menu opens from this timer, ahead of Gesture's 700ms long-press, which is
++			// when a long-press elsewhere selects the word instead.
++			menuTimer: press.armsHoldMenu
++				? dom.getWindow(this.viewHelper.viewDomNode).setTimeout(() => this._openTouchSelectionMenu(), TOUCH_SELECTION_MENU_HOLD_TIME)
++				: undefined
++		};
++	}
++
++	private onTouchEnd(): void {
++		this._clearTouchMenuTimer();
++		this._touchPress = null;
++	}
++
++	private _clearTouchMenuTimer(): void {
++		if (this._touchPress?.menuTimer !== undefined) {
++			dom.getWindow(this.viewHelper.viewDomNode).clearTimeout(this._touchPress.menuTimer);
++			this._touchPress.menuTimer = undefined;
++		}
++	}
++
++	private _openTouchSelectionMenu(): void {
++		const gesture = this._touchPress;
++		if (!gesture?.press.opensHoldMenu) {
++			return;
++		}
++		gesture.menuTimer = undefined;
++		gesture.press.openedMenu();
++		const targetWindow = dom.getWindow(this.viewHelper.viewDomNode);
++		const browserEvent = new MouseEvent('contextmenu', {
++			bubbles: false,
++			cancelable: true,
++			view: targetWindow,
++			clientX: gesture.pageX - targetWindow.scrollX,
++			clientY: gesture.pageY - targetWindow.scrollY
++		});
++		this._touchHandles.suppress();
++		super._onContextMenu(new EditorMouseEvent(browserEvent, false, this.viewHelper.viewDomNode), false);
++	}
++
+ 	private onTap(event: GestureEvent): void {
++		// A press that panned or opened the hold menu is not a tap, even when it stays
++		// inside Gesture's own 30px tap slop (our pan threshold is tighter).
++		if (this._touchPress?.press.settled) {
++			event.preventDefault();
++			return;
++		}
++
+ 		if (!event.initialTarget || !this.viewHelper.linesContentDomNode.contains(event.initialTarget as HTMLElement)) {
+ 			return;
+ 		}
+ 
+ 		event.preventDefault();
++		// focus() on an already-focused hidden input does not re-open a dismissed soft
++		// keyboard. Only cycle focus when the keyboard is actually down: cycling it while
++		// visible produces two viewport resizes and makes the editor jump on every tap.
++		// The verdict has to come from softKeyboard - a viewport difference measured here
++		// is a structural zero under interactive-widget=resizes-content, which would blur
++		// on every tap and cause exactly the jump this avoids.
++		const active = dom.getActiveElement();
++		if (!softKeyboard(dom.getWindow(this.viewHelper.viewDomNode)).open && active instanceof HTMLElement && dom.isAncestor(active, this.viewHelper.viewDomNode)) {
++			active.blur();
++		}
+ 		this.viewHelper.focusTextArea();
+ 		this._dispatchGesture(event, /*inSelectionMode*/false);
+ 	}
+ 
++	private onContextMenu(event: MouseEvent): void {
++		const editorEvent = new EditorMouseEvent(event, false, this.viewHelper.viewDomNode);
++		const press = this._touchPress?.press ?? null;
++		const action = touchContextMenu(press, {
++			isTrusted: event.isTrusted,
++			pointerType: (event as PointerEvent).pointerType
++		});
++
++		// This capture listener also sees ordinary mouse context menus. Leave those on
++		// MouseHandler's existing bubbling path; only the native touch event and
++		// Gesture's untrusted fallback belong to this path.
++		if (action === 'defer') {
++			return;
++		}
++
++		if (action === 'selectWord') {
++			// The word under the finger, exactly as a textarea would; the handles then
++			// adjust it and a second hold inside the selection opens the menu.
++			// The native-shaped event is intentionally re-fired 700ms after touchstart, and
++			// the text classification stays the one taken at touchstart: Chromium can
++			// classify that re-fire as content-empty even while its DOM target is still the
++			// rendered token. Recompute only the dispatch position, so it reflects the
++			// editor state at hold time.
++			const target = this._createMouseTarget(editorEvent, false);
++			event.preventDefault();
++			event.stopPropagation();
++			this.viewHelper.focusTextArea();
++			this._dispatchMouseTarget(target, /*inSelectionMode*/false, /*mouseDownCount*/2);
++			return;
++		}
++
++		if (action === 'menu') {
++			this._showTouchContextMenu(editorEvent);
++		}
++
++		event.preventDefault();
++		event.stopPropagation();
++	}
++
++	private _showTouchContextMenu(editorEvent: EditorMouseEvent): void {
++		// A menu is taking over the selection, so the grips go. That is the rule the
++		// _onContextMenu override applies everywhere else, and this is the path that
++		// misses it: the normal branch reaches MouseHandler through super, and the
++		// gutter branch below emits its menu without going through it at all.
++		this._touchHandles.suppress();
++		const target = this._createMouseTarget(editorEvent, true);
++		if (
++			target.position
++			&& (
++				target.type === MouseTargetType.GUTTER_GLYPH_MARGIN
++				|| target.type === MouseTargetType.GUTTER_LINE_NUMBERS
++				|| target.type === MouseTargetType.GUTTER_LINE_DECORATIONS
++			)
++		) {
++			// The desktop editor intentionally ignores gutter context menus. A touch hold
++			// has no alternate action there, so present the editor menu for that line while
++			// preserving the native-shaped DOM event's real gutter target.
++			this.viewController.emitContextMenu({
++				event: editorEvent,
++				target: MouseTarget.createContentEmpty(target.element, target.mouseColumn, target.position, { isAfterLines: false })
++			});
++			return;
++		}
++		super._onContextMenu(editorEvent, true);
++	}
++
+ 	private onChange(event: GestureEvent): void {
+ 		if (this._lastPointerType === 'touch') {
++			const press = this._touchPress?.press;
++			if (press) {
++				const pan = press.translate(event.translationX, event.translationY);
++				if (pan) {
++					if (pan.startedPanning) {
++						this._clearTouchMenuTimer();
++					}
++					this._context.viewModel.viewLayout.deltaScrollNow(pan.deltaX, pan.deltaY);
++				}
++				return;
++			}
++
+ 			this._context.viewModel.viewLayout.deltaScrollNow(-event.translationX, -event.translationY);
+ 		}
+ 		if (this._lastPointerType === 'pen') {
+@@ -74,13 +274,20 @@ export class PointerEventHandler extends MouseHandler {
+ 
+ 	private _dispatchGesture(event: GestureEvent, inSelectionMode: boolean): void {
+ 		const target = this._createMouseTarget(new EditorMouseEvent(event, false, this.viewHelper.viewDomNode), false);
++		this._dispatchMouseTarget(target, inSelectionMode, event.tapCount);
++	}
++
++	private _dispatchMouseTarget(target: IMouseTarget, inSelectionMode: boolean, mouseDownCount: number): void {
+ 		if (target.position) {
+ 			this.viewController.dispatchMouse({
+ 				position: target.position,
+ 				mouseColumn: target.position.column,
+ 				startedOnLineNumbers: false,
+-				revealType: NavigationCommandRevealType.Minimal,
+-				mouseDownCount: event.tapCount,
++				// Native textarea parity: the finger defines the spot, so touch never needs a
++				// cursor reveal - reveals here scroll the editor mid-selection at viewport
++				// edges (vertically and, for word selects past the right edge, horizontally).
++				revealType: NavigationCommandRevealType.None,
++				mouseDownCount,
+ 				inSelectionMode,
+ 				altKey: false,
+ 				ctrlKey: false,
+@@ -93,11 +300,95 @@ export class PointerEventHandler extends MouseHandler {
+ 		}
+ 	}
+ 
++	// --- view state tracking ---
++
++	// The handles sit at model positions rendered into the lines, so anything the view
++	// reports can move them - a scroll, a token colouring that rewraps, a zone opening,
++	// a decoration widening a line. Enumerating the events that matter is a list that
++	// silently goes stale on every upstream bump; refresh after whatever the view just
++	// handled instead. The update is animation-frame coalesced, so a burst costs one pass.
++	public override handleEvents(events: viewEvents.ViewEvent[]): void {
++		super.handleEvents(events);
++		this._touchHandles.scheduleUpdate();
++	}
++
++	public override onCursorStateChanged(e: viewEvents.ViewCursorStateChangedEvent): boolean {
++		super.onCursorStateChanged(e);
++		this._primarySelection = e.selections[0] ?? null;
++		this._primaryModelSelection = e.modelSelections[0] ?? null;
++		return false;
++	}
++
++	public override onFocusChanged(e: viewEvents.ViewFocusChangedEvent): boolean {
++		super.onFocusChanged(e);
++		this._editorFocused = e.isFocused;
++		if (e.isFocused) {
++			this._touchHandles.reveal();
++		} else {
++			this._touchHandles.suppress();
++		}
++		return false;
++	}
++
++	// --- selection handles ---
++
++	// Only a touch selection carries handles, and only while the editor owns the cursor
++	// they belong to.
++	private _getTouchSelectionEdges(): TouchSelectionEdges | null {
++		return touchSelectionEdges(
++			this._lastPointerType === 'touch' && this._editorFocused ? this._primarySelection : null,
++			position => this._touchSelectionEdgeAt(position)
++		);
++	}
++
++	private _touchSelectionEdgeAt(position: ITouchPosition): ITouchSelectionEdge | undefined {
++		const visibleRange = this.viewHelper.visibleRangeForPosition(position.lineNumber, position.column);
++		if (!visibleRange || visibleRange.outsideRenderedLine) {
++			return undefined;
++		}
++		return touchSelectionEdge({
++			left: visibleRange.left,
++			height: this._context.viewLayout.getLineHeightForLineNumber(position.lineNumber),
++			verticalOffset: this._context.viewLayout.getVerticalOffsetForLineNumber(position.lineNumber),
++			bigNumbersDelta: this._context.viewLayout.getLinesViewportData().bigNumbersDelta
++		}, this.viewHelper.linesContentDomNode.getBoundingClientRect());
++	}
++
++	private _startTouchSelectionDrag(kind: TouchSelectionHandleKind): void {
++		this._touchDragAnchor = touchDragAnchor(kind, this._primaryModelSelection);
++		this.viewHelper.focusTextArea();
++	}
++
++	private _dragTouchSelectionTo(x: number, y: number): TouchSelectionHandleKind | undefined {
++		const target = this.getTargetAtClientPoint(x, y);
++		if (!target?.position) {
++			return undefined;
++		}
++		const position = this._context.viewModel.coordinatesConverter.convertViewPositionToModelPosition(target.position);
++		const anchor = this._touchDragAnchor;
++		this.viewController.setSelection(anchor ? Selection.fromPositions(anchor, position) : Selection.fromPositions(position));
++		return touchDragHandle(anchor, position);
++	}
++
++	protected override _onContextMenu(e: EditorMouseEvent, testEventTarget: boolean): void {
++		this._touchHandles.suppress();
++		super._onContextMenu(e, testEventTarget);
++	}
++
+ 	protected override _onMouseDown(e: EditorMouseEvent, pointerId: number): void {
+ 		if ((e.browserEvent as PointerEvent).pointerType === 'touch') {
+ 			return;
+ 		}
+ 
++		if ((e.browserEvent as PointerEvent).pointerType === 'mouse' && e.browserEvent.type === 'pointerdown') {
++			// Composery: handling the mouse press here preventDefaults the pointerdown, which
++			// suppresses the compat mousedown that carries the browser click count - double
++			// and triple click would never see count 2/3. The base MouseHandler already
++			// listens for that mousedown (it reaches this same method with a MouseEvent);
++			// let mouse presses take that path, exactly like the plain MouseHandler.
++			return;
++		}
++
+ 		super._onMouseDown(e, pointerId);
+ 	}
+ }
+@@ -111,7 +402,7 @@ class TouchHandler extends MouseHandler {
+ 
+ 		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, EventType.Tap, (e) => this.onTap(e)));
+ 		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, EventType.Change, (e) => this.onChange(e)));
+-		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, EventType.Contextmenu, (e: MouseEvent) => this._onContextMenu(new EditorMouseEvent(e, false, this.viewHelper.viewDomNode), false)));
++		this._register(dom.addDisposableListener(this.viewHelper.linesContentDomNode, dom.EventType.CONTEXT_MENU, (e: MouseEvent) => this._onContextMenu(new EditorMouseEvent(e, false, this.viewHelper.viewDomNode), false)));
+ 	}
+ 
+ 	private onTap(event: GestureEvent): void {
+@@ -141,8 +432,12 @@ export class PointerHandler extends Disposable {
+ 
+ 	constructor(context: ViewContext, viewController: ViewController, viewHelper: IPointerHandlerHelper) {
+ 		super();
+-		const isPhone = platform.isIOS || (platform.isAndroid && platform.isMobile);
+-		if (isPhone && BrowserFeatures.pointerEvents) {
++		// Composery: gate on the canonical touch gate, not the phone UA. Upstream's isPhone
++		// (isIOS || isAndroid+isMobile) leaves Android tablets (no "Mobi" UA token) and touch
++		// laptops on the legacy TouchHandler, which has none of the touch selection, handle
++		// and context-menu support above. Mouse input is unaffected: PointerEventHandler
++		// extends MouseHandler and only adds gesture handling.
++		if (isTouch(mainWindow) && BrowserFeatures.pointerEvents) {
+ 			this.handler = this._register(new PointerEventHandler(context, viewController, viewHelper));
+ 		} else if (mainWindow.TouchEvent) {
+ 			this.handler = this._register(new TouchHandler(context, viewController, viewHelper));
+--- a/lib/vscode/src/vs/editor/contrib/links/browser/links.ts
++++ b/lib/vscode/src/vs/editor/contrib/links/browser/links.ts
+@@ -28,9 +28,17 @@ import { ILanguageFeaturesService } from '../../../common/services/languageFeatu
+ import { ClickLinkGesture, ClickLinkKeyboardEvent, ClickLinkMouseEvent } from '../../gotoSymbol/browser/link/clickLinkGesture.js';
+ import { getLinks, Link, LinksList } from './getLinks.js';
+ import * as nls from '../../../../nls.js';
++import { getWindow } from '../../../../base/browser/dom.js';
++import { isTouch } from '../../../../base/browser/touchGate.js';
++import { MenuId, MenuRegistry } from '../../../../platform/actions/common/actions.js';
++import { IContextKey, IContextKeyService, RawContextKey } from '../../../../platform/contextkey/common/contextkey.js';
+ import { INotificationService } from '../../../../platform/notification/common/notification.js';
+ import { IOpenerService } from '../../../../platform/opener/common/opener.js';
+ 
++// Composery: true on touch devices while the primary cursor rests on a detected link -
++// gates the context-menu Open Link entry that stands in for ctrl+click.
++const CURSOR_ON_LINK = new RawContextKey<boolean>('composeryCursorOnLink', false);
++
+ export class LinkDetector extends Disposable implements IEditorContribution {
+ 
+ 	public static readonly ID: string = 'editor.linkDetector';
+@@ -46,6 +54,7 @@ export class LinkDetector extends Disposable implements IEditorContribution {
+ 	private activeLinksList: LinksList | null;
+ 	private activeLinkDecorationId: string | null;
+ 	private currentOccurrences: { [decorationId: string]: LinkOccurrence };
++	private readonly cursorOnLink: IContextKey<boolean> | undefined;
+ 
+ 	constructor(
+ 		private readonly editor: ICodeEditor,
+@@ -53,9 +62,18 @@ export class LinkDetector extends Disposable implements IEditorContribution {
+ 		@INotificationService private readonly notificationService: INotificationService,
+ 		@ILanguageFeaturesService private readonly languageFeaturesService: ILanguageFeaturesService,
+ 		@ILanguageFeatureDebounceService languageFeatureDebounceService: ILanguageFeatureDebounceService,
++		@IContextKeyService contextKeyService: IContextKeyService,
+ 	) {
+ 		super();
+ 
++		// Composery: touch has no ctrl+click - track whether the cursor rests on a link
++		// (a long-press moves the cursor before the context menu opens), so the menu can
++		// offer Open Link instead.
++		if (isTouch(getWindow(editor.getContainerDomNode()))) {
++			this.cursorOnLink = CURSOR_ON_LINK.bindTo(contextKeyService);
++			this._register(editor.onDidChangeCursorPosition(() => this.updateCursorOnLink()));
++		}
++
+ 		this.providers = this.languageFeaturesService.linkProvider;
+ 		this.debounceInformation = languageFeatureDebounceService.for(this.providers, 'Links', { min: 1000, max: 4000 });
+ 		this.computeLinks = this._register(new RunOnceScheduler(() => this.computeLinksNow(), 1000));
+@@ -175,6 +193,12 @@ export class LinkDetector extends Disposable implements IEditorContribution {
+ 				this.currentOccurrences[occurence.decorationId] = occurence;
+ 			}
+ 		});
++
++		this.updateCursorOnLink();
++	}
++
++	private updateCursorOnLink(): void {
++		this.cursorOnLink?.set(!!this.getLinkOccurrence(this.editor.getPosition()));
+ 	}
+ 
+ 	private _onEditorMouseMove(mouseEvent: ClickLinkMouseEvent, withKey: ClickLinkKeyboardEvent | null): void {
+@@ -426,3 +450,12 @@ class OpenLinkAction extends EditorAction {
+ 
+ registerEditorContribution(LinkDetector.ID, LinkDetector, EditorContributionInstantiation.AfterFirstRender);
+ registerEditorAction(OpenLinkAction);
++
++// Composery: the reachable ctrl+click stand-in - the entry appears only while the
++// (touch-bound) cursor-on-link key is true, so desktop menus are untouched.
++MenuRegistry.appendMenuItem(MenuId.EditorContext, {
++	command: { id: 'editor.action.openLink', title: nls.localize('openLinkMenu', "Open Link") },
++	group: 'navigation',
++	order: 10,
++	when: CURSOR_ON_LINK
++});
+--- a/lib/vscode/src/vs/platform/contextview/browser/contextMenuHandler.ts
++++ b/lib/vscode/src/vs/platform/contextview/browser/contextMenuHandler.ts
+@@ -6,6 +6,8 @@
+ import { IContextMenuDelegate } from '../../../base/browser/contextmenu.js';
+ import { $, addDisposableListener, EventType, getActiveElement, getWindow, isAncestor, isHTMLElement } from '../../../base/browser/dom.js';
+ import { StandardMouseEvent } from '../../../base/browser/mouseEvent.js';
++import { isTouch } from '../../../base/browser/touchGate.js';
++import { mainWindow } from '../../../base/browser/window.js';
+ import { Menu } from '../../../base/browser/ui/menu/menu.js';
+ import { ActionRunner, IRunEvent, WorkbenchActionExecutedClassification, WorkbenchActionExecutedEvent } from '../../../base/common/actions.js';
+ import { isCancellationError } from '../../../base/common/errors.js';
+@@ -49,7 +51,14 @@ export class ContextMenuHandler {
+ 
+ 		let menu: Menu | undefined;
+ 
+-		const shadowRootElement = isHTMLElement(delegate.domForShadowRoot) ? delegate.domForShadowRoot : undefined;
++		// Composery: never render a menu into a shadow root on touch, whoever asks
++		// (menuAsChild dropdowns like the settings gear, editor menus, submenu items).
++		// Touch events retarget to the shadow host, so the surface hosting it - a list
++		// row, say - sees the very next touchstart as its own, steals focus back, and
++		// the menu closes on blur before any item can activate; Gesture cannot reach
++		// items behind the shadow boundary either, and overlay touch styling cannot
++		// pierce it. The standard context view is the verified touch path.
++		const shadowRootElement = isHTMLElement(delegate.domForShadowRoot) && !isTouch(mainWindow) ? delegate.domForShadowRoot : undefined;
+ 		this.contextViewService.showContextView({
+ 			getAnchor: () => delegate.getAnchor(),
+ 			canRelayout: false,
+@@ -76,7 +85,20 @@ export class ContextMenuHandler {
+ 					this.block.style.zIndex = '-1';
+ 
+ 					this.blockDisposable?.dispose();
+-					this.blockDisposable = addDisposableListener(this.block, EventType.MOUSE_DOWN, e => e.stopPropagation());
++					this.blockDisposable = addDisposableListener(this.block, EventType.MOUSE_DOWN, e => {
++						e.stopPropagation();
++						// Composery: on touch this backdrop is the deliberate dismissal, because
++						// it is the only thing a press outside the menu can reach - it covers the
++						// viewport, and it is a child of the container the outside-press listener
++						// below treats as "inside". Upstream is saved by the menu's blur, which
++						// touch does not use (see the onDidBlur gate). Without this a menu could
++						// only be dismissed with Escape: device-verified, the press lands here,
++						// blurs the surface underneath, and leaves an invisible full-screen block
++						// over a workbench that no longer answers anything.
++						if (isTouch(mainWindow)) {
++							this.contextViewService.hideContextView(true);
++						}
++					});
+ 				}
+ 
+ 				const menuDisposables = new DisposableStore();
+@@ -94,9 +116,16 @@ export class ContextMenuHandler {
+ 				);
+ 
+ 				menu.onDidCancel(() => this.contextViewService.hideContextView(true), null, menuDisposables);
+-				menu.onDidBlur(() => this.contextViewService.hideContextView(true), null, menuDisposables);
+ 				const targetWindow = getWindow(container);
+-				menuDisposables.add(addDisposableListener(targetWindow, EventType.BLUR, () => this.contextViewService.hideContextView(true)));
++				// Composery: on touch, blur is the soft keyboard churning focus, not intent to
++				// dismiss - opening the menu blurs the editor's hidden input, the keyboard closes,
++				// and iOS then pulls focus to <body> (a window blur too). Neither should tear the
++				// menu down; the outside-press (MOUSE_DOWN) path below is the deliberate touch
++				// dismissal, and onDidCancel (Escape/Back) still closes it.
++				if (!isTouch(targetWindow)) {
++					menu.onDidBlur(() => this.contextViewService.hideContextView(true), null, menuDisposables);
++					menuDisposables.add(addDisposableListener(targetWindow, EventType.BLUR, () => this.contextViewService.hideContextView(true)));
++				}
+ 				menuDisposables.add(addDisposableListener(targetWindow, EventType.MOUSE_DOWN, (e: MouseEvent) => {
+ 					if (e.defaultPrevented) {
+ 						return;
+@@ -125,7 +154,16 @@ export class ContextMenuHandler {
+ 			},
+ 
+ 			focus: () => {
+-				menu?.focus(!!delegate.autoSelectFirstItem);
++				// Composery: on touch, taking DOM focus is what closes the soft keyboard - and
++				// that resizes whatever is underneath. Under a terminal it is fatal: xterm
++				// answers a row-count change by dropping its selection, so the menu a
++				// long-press selection had just asked for destroyed that selection as it
++				// opened, and Copy found nothing to copy (device-verified). A menu here is
++				// tapped, not walked with arrow keys, and Escape still cancels through
++				// onDidCancel - so it has nothing to gain from focus and a surface to break.
++				if (!isTouch(mainWindow)) {
++					menu?.focus(!!delegate.autoSelectFirstItem);
++				}
+ 			},
+ 
+ 			onHide: (didCancel?: boolean) => {
+@@ -140,7 +178,9 @@ export class ContextMenuHandler {
+ 				this.blockDisposable = null;
+ 
+ 				if (!!this.lastContainer && (getActiveElement() === this.lastContainer || isAncestor(getActiveElement(), this.lastContainer))) {
+-					this.focusToReturn?.focus();
++					// Composery: restoring focus must not let the browser re-reveal it - that
++					// scroll tears the surface the menu was opened over (worst on mobile).
++					this.focusToReturn?.focus({ preventScroll: true });
+ 				}
+ 
+ 				this.lastContainer = null;
+--- a/lib/vscode/src/vs/platform/quickinput/browser/quickInput.ts
++++ b/lib/vscode/src/vs/platform/quickinput/browser/quickInput.ts
+@@ -5,6 +5,7 @@
+ 
+ import * as dom from '../../../base/browser/dom.js';
+ import { StandardKeyboardEvent } from '../../../base/browser/keyboardEvent.js';
++import { isTouch } from '../../../base/browser/touchGate.js';
+ import { ToolBar } from '../../../base/browser/ui/toolbar/toolbar.js';
+ import { Button, IButtonStyles } from '../../../base/browser/ui/button/button.js';
+ import { CountBadge, ICountBadgeStyles } from '../../../base/browser/ui/countBadge/countBadge.js';
+@@ -20,7 +21,6 @@ import { Codicon } from '../../../base/common/codicons.js';
+ import { Emitter, Event, EventBufferer } from '../../../base/common/event.js';
+ import { KeyCode } from '../../../base/common/keyCodes.js';
+ import { Disposable, DisposableStore } from '../../../base/common/lifecycle.js';
+-import { isIOS } from '../../../base/common/platform.js';
+ import Severity from '../../../base/common/severity.js';
+ import { ThemeIcon } from '../../../base/common/themables.js';
+ import './media/quickInput.css';
+@@ -261,8 +261,13 @@ export abstract class QuickInput extends Disposable implements IQuickInput {
+ 	}
+ 
+ 	set ignoreFocusOut(ignoreFocusOut: boolean) {
+-		const shouldUpdate = this._ignoreFocusOut !== ignoreFocusOut && !isIOS;
+-		this._ignoreFocusOut = ignoreFocusOut && !isIOS;
++		// Composery: honour ignoreFocusOut on every platform. Upstream forced it off on iOS
++		// (a phone has no Escape key), but on touch a quick pick is dismissed by a deliberate
++		// press outside it (quickInputController) and by Back - so a picker that asks to
++		// ignore focus loss can safely do so instead of dying to the soft keyboard's focus
++		// churn (opening a menu, the keyboard closing, iOS pulling focus to <body>).
++		const shouldUpdate = this._ignoreFocusOut !== ignoreFocusOut;
++		this._ignoreFocusOut = ignoreFocusOut;
+ 		if (shouldUpdate) {
+ 			this.update();
+ 		}
+@@ -1288,6 +1293,10 @@ export class InputBox extends QuickInput implements IInputBox {
+ 			title: !!this.title || !!this.step || !!this.titleButtons.length,
+ 			description: !!this.description || !!this.step,
+ 			inputBox: true,
++			// Composery: Enter is this prompt's only accept path and mobile IMEs cannot
++			// be trusted to deliver one - on touch, the OK button is the guaranteed tap
++			// path (its click feeds the same accept emitter Enter does).
++			ok: isTouch(dom.getWindow(this.ui.container)),
+ 			message: true,
+ 			progressBar: true
+ 		};
+--- a/lib/vscode/src/vs/platform/quickinput/browser/quickInputController.ts
++++ b/lib/vscode/src/vs/platform/quickinput/browser/quickInputController.ts
+@@ -21,6 +21,7 @@ import { QuickInputBox } from './quickInputBox.js';
+ import { QuickInputUI, Writeable, IQuickInputStyles, IQuickInputOptions, QuickPick, backButton, InputBox, Visibilities, QuickWidget, InQuickInputContextKey, QuickInputTypeContextKey, EndOfQuickInputBoxContextKey, QuickInputAlignmentContextKey } from './quickInput.js';
+ import { ILayoutService } from '../../layout/browser/layoutService.js';
+ import { mainWindow } from '../../../base/browser/window.js';
++import { isTouch } from '../../../base/browser/touchGate.js';
+ import { IInstantiationService } from '../../instantiation/common/instantiation.js';
+ import { IContextMenuService } from '../../contextview/browser/contextView.js';
+ import { QuickInputList } from './quickInputList.js';
+@@ -330,13 +331,33 @@ export class QuickInputController extends Disposable {
+ 			this.previousFocusElement = dom.isHTMLElement(e.relatedTarget) ? e.relatedTarget : undefined;
+ 		}, true));
+ 		this._register(focusTracker.onDidBlur(() => {
+-			if (!this.getUI().ignoreFocusOut && !this.options.ignoreFocusOut()) {
++			// Composery: on touch the soft keyboard churns focus with no intent to dismiss
++			// (opening a menu blurs the field, the keyboard closing, iOS pulling focus to
++			// <body>), so blur must not hide the quick input - a deliberate outside press
++			// does (the listener below), the way a context menu already dismisses on touch.
++			if (!isTouch(mainWindow) && !this.getUI().ignoreFocusOut && !this.options.ignoreFocusOut()) {
+ 				this.hide(QuickInputHideReason.Blur);
+ 			}
+ 			this.inQuickInputContext.set(false);
+ 			this.endOfQuickInputBoxContext.set(false);
+ 			this.previousFocusElement = undefined;
+ 		}));
++		// Composery: the touch replacement for blur-dismissal. A pointerdown (press - not a
++		// release or a focus move) landing outside the widget dismisses it, so a real tap-away
++		// closes it while the keyboard's focus churn, and a text-selection drag that begins
++		// inside and releases outside, do not.
++		this._register(dom.addDisposableListener(dom.getWindow(container).document, dom.EventType.POINTER_DOWN, (e) => {
++			if (!isTouch(mainWindow) || !this.isVisible()) {
++				return;
++			}
++			if (this.getUI().ignoreFocusOut || this.options.ignoreFocusOut()) {
++				return;
++			}
++			const target = e.target;
++			if (target instanceof Node && !this.getUI().container.contains(target)) {
++				this.hide(QuickInputHideReason.Blur);
++			}
++		}, true));
+ 		this._register(inputBox.onKeyDown(e => {
+ 			const value = this.getUI().inputBox.isSelectionAtEnd();
+ 			if (this.endOfQuickInputBoxContext.get() !== value) {
+--- a/lib/vscode/src/vs/workbench/browser/actions/textInputActions.ts
++++ b/lib/vscode/src/vs/workbench/browser/actions/textInputActions.ts
+@@ -9,6 +9,7 @@ import { IWorkbenchLayoutService } from '../../services/layout/browser/layoutSer
+ import { IContextMenuService } from '../../../platform/contextview/browser/contextView.js';
+ import { Disposable } from '../../../base/common/lifecycle.js';
+ import { EventHelper, addDisposableListener, getActiveDocument, getWindow, isHTMLInputElement, isHTMLTextAreaElement } from '../../../base/browser/dom.js';
++import { isTouch } from '../../../base/browser/touchGate.js';
+ import { IWorkbenchContribution, WorkbenchPhase, registerWorkbenchContribution2 } from '../../common/contributions.js';
+ import { IClipboardService } from '../../../platform/clipboard/common/clipboardService.js';
+ import { StandardMouseEvent } from '../../../base/browser/mouseEvent.js';
+@@ -91,6 +92,14 @@ export class TextInputActionsProvider extends Disposable implements IWorkbenchCo
+ 			return; // only for inputs or textareas
+ 		}
+ 
++		// Composery: on touch, leave the field to the OS text-selection toolbar (which rides on
++		// the selection and carries Select all + Web search/Look up/Open in... that this menu
++		// cannot) instead of taking over the contextmenu with a themed menu. iOS already behaves
++		// this way; this makes touch consistent. Mouse/desktop still gets the menu below.
++		if (isTouch(targetWindow)) {
++			return;
++		}
++
+ 		EventHelper.stop(e, true);
+ 
+ 		const event = new StandardMouseEvent(targetWindow, e);
+--- a/lib/vscode/src/vs/workbench/browser/layout.ts
++++ b/lib/vscode/src/vs/workbench/browser/layout.ts
+@@ -8,6 +8,9 @@ import { Event, Emitter } from '../../base/common/event.js';
+ import { EventType, addDisposableListener, getClientArea, size, IDimension, isAncestorUsingFlowTo, computeScreenAwareSize, getActiveDocument, getWindows, getActiveWindow, isActiveDocument, getWindow, getWindowId, getActiveElement, Dimension } from '../../base/browser/dom.js';
+ import { onDidChangeFullscreen, isFullscreen, isWCOEnabled } from '../../base/browser/browser.js';
+ import { isWindows, isLinux, isMacintosh, isWeb, isIOS } from '../../base/common/platform.js';
++import { isTouch } from '../../base/browser/touchGate.js';
++import { softKeyboard } from '../../base/browser/softKeyboard.js';
++import { Keybar } from './keybar.js';
+ import { EditorInputCapabilities, GroupIdentifier, isResourceEditorInput, IUntypedEditorInput, pathsToEditors } from '../common/editor.js';
+ import { SidebarPart } from './parts/sidebar/sidebarPart.js';
+ import { PanelPart } from './parts/panel/panelPart.js';
+@@ -296,6 +299,9 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 	private telemetryService!: ITelemetryService;
+ 	private auxiliaryWindowService!: IAuxiliaryWindowService;
+ 
++	// Composery: the keys a soft keyboard cannot produce, docked above it (keybar.ts).
++	private keybar: Keybar | undefined;
++
+ 	private state!: ILayoutState;
+ 	private stateModel!: LayoutStateModel;
+ 
+@@ -336,6 +342,13 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 		// Listeners
+ 		this.registerLayoutListeners();
+ 
++		// Composery: the touch keybar lives in the workbench container (theme variables are
++		// scoped to .monaco-workbench) and reserves its height out of the grid below.
++		this.keybar = this._register(new Keybar(this.mainContainer));
++		// It also reserves rows while a terminal holds focus, which can toggle with no layout
++		// event of its own - relayout so the grid reclaims or gives those rows back.
++		this._register(this.keybar.onDidChangeHeight(() => this.layout()));
++
+ 		// State
+ 		this.initLayoutState(accessor.get(ILifecycleService), accessor.get(IFileService));
+ 	}
+@@ -465,7 +478,11 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 		this._register(this.editorGroupService.mainPart.onDidChangeGroupMaximized(() => this.centerMainEditorLayout(this.stateModel.getRuntimeValue(LayoutStateKeys.MAIN_EDITOR_CENTERED))));
+ 
+ 		// Prevent workbench from scrolling #55456
+-		this._register(addDisposableListener(this.mainContainer, EventType.SCROLL, () => this.mainContainer.scrollTop = 0));
++		this._register(addDisposableListener(this.mainContainer, EventType.SCROLL, () => {
++			this.mainContainer.scrollTop = 0;
++			// Composery: the browser's focus/selection reveal scrolls horizontally too.
++			this.mainContainer.scrollLeft = 0;
++		}));
+ 
+ 		// Menubar visibility changes
+ 		const showingCustomMenu = (isWindows || isLinux || isWeb) && !hasNativeTitlebar(this.configurationService);
+@@ -1771,12 +1788,36 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 				this.contextService.getWorkbenchState() === WorkbenchState.EMPTY ? DEFAULT_EMPTY_WINDOW_DIMENSIONS : DEFAULT_WORKSPACE_WINDOW_DIMENSIONS // running with fallback to ensure no error is thrown (https://github.com/microsoft/vscode/issues/240242)
+ 			);
+ 
++			// Composery: on a touch device the layout viewport is not what the user sees - fit the
++			// workbench to the visual viewport (which excludes the on-screen keyboard) and, with no
++			// keyboard up, keep it clear of the edge-to-edge bottom inset that viewport-fit=cover
++			// opts us into (Android gesture bar / iOS home indicator). The inset is read from
++			// --composery-safe-area-bottom (narrow.css), the one definition of env(safe-area-inset-bottom).
++			// Gated on the touch capability, not a vendor list: where no keyboard or inset exists
++			// softKeyboard reads a structural zero and this is a no-op, and scale === 1 leaves
++			// pinch-zoom geometry alone.
++			const viewport = mainWindow.visualViewport;
++			if (isTouch(mainWindow) && viewport && viewport.scale === 1) {
++				const keyboard = softKeyboard(mainWindow);
++				const safeAreaBottom = keyboard.open ? 0 : parseInt(mainWindow.getComputedStyle(mainWindow.document.documentElement).getPropertyValue('--composery-safe-area-bottom'), 10) || 0;
++				const visibleHeight = Math.round(viewport.height) - safeAreaBottom;
++				// Composery: the keybar exists exactly while the soft keyboard does - one rule, no
++				// per-surface judgement - and collapses to a single row when what survives the
++				// keyboard is too short to spend two on. This is the only place that knows either.
++				this.keybar?.setViewport(keyboard.open, visibleHeight);
++				if (visibleHeight < this._mainContainerDimension.height) {
++					this._mainContainerDimension = new Dimension(this._mainContainerDimension.width, visibleHeight);
++				}
++			}
++
+ 			this.logService.trace(`Layout#layout, height: ${this._mainContainerDimension.height}, width: ${this._mainContainerDimension.width}`);
+ 
+ 			size(this.mainContainer, this._mainContainerDimension.width, this._mainContainerDimension.height);
+ 
+ 			// Layout the grid widget
+-			this.workbenchGrid.layout(this._mainContainerDimension.width, this._mainContainerDimension.height);
++			// Composery: the keybar is absolutely positioned at the bottom of the container, so
++			// the grid gets what is left. Its height is 0 with no keyboard up, and on desktop.
++			this.workbenchGrid.layout(this._mainContainerDimension.width, this._mainContainerDimension.height - (this.keybar?.height ?? 0));
+ 			this.initialized = true;
+ 
+ 			// Emit as event
+@@ -2130,7 +2171,7 @@ export abstract class Layout extends Disposable implements IWorkbenchLayoutServi
+ 		if (hidden && this.paneCompositeService.getActivePaneComposite(ViewContainerLocation.Panel)) {
+ 			this.paneCompositeService.hideActivePaneComposite(ViewContainerLocation.Panel);
+ 			if (
+-				!isIOS &&						// do not auto focus on iOS (https://github.com/microsoft/vscode/issues/127832)
++				!isTouch(mainWindow) &&			// Composery: every touch device, not just iOS - the keyboard pops with nothing to type (#127832)
+ 				!this.isAuxiliaryBarMaximized()	// do not auto focus when auxiliary bar is maximized
+ 			) {
+ 				focusEditor = true;
+--- a/lib/vscode/src/vs/workbench/browser/part.ts
++++ b/lib/vscode/src/vs/workbench/browser/part.ts
+@@ -7,7 +7,8 @@ import './media/part.css';
+ import './media/floatingPanels.css';
+ import { Component } from '../common/component.js';
+ import { IThemeService, IColorTheme } from '../../platform/theme/common/themeService.js';
+-import { Dimension, size, IDimension, getActiveDocument, prepend, IDomPosition } from '../../base/browser/dom.js';
++import { Dimension, size, IDimension, getActiveDocument, prepend, IDomPosition, getWindow } from '../../base/browser/dom.js';
++import { isTouch } from '../../base/browser/touchGate.js';
+ import { IStorageService } from '../../platform/storage/common/storage.js';
+ import { ISerializableView, IViewSize } from '../../base/browser/ui/grid/grid.js';
+ import { Event, Emitter } from '../../base/common/event.js';
+@@ -218,6 +219,7 @@ class PartLayout {
+ 	private static readonly HEADER_HEIGHT = 35;
+ 	private static readonly TITLE_HEIGHT = 35;
+ 	private static readonly Footer_HEIGHT = 35;
++	private static readonly MINIMUM_TOUCH_CONTENT_HEIGHT = 40;
+ 
+ 	private headerVisible: boolean = false;
+ 	private footerVisible: boolean = false;
+@@ -242,9 +244,18 @@ class PartLayout {
+ 			headerSize = Dimension.None;
+ 		}
+ 
++		// On a touch device in landscape, the IME can leave less height than the title,
++		// footer and terminal keybar require. Temporarily give the footer's row to the
++		// active content; it returns automatically with the next taller layout. The class
++		// is what actually hides the footer element (narrow.css) - dropping it from the
++		// size below only stops reserving the row.
++		const compactFooter = this.footerVisible && !!this.contentArea && isTouch(getWindow(this.contentArea)) &&
++			height < titleSize.height + headerSize.height + PartLayout.Footer_HEIGHT + PartLayout.MINIMUM_TOUCH_CONTENT_HEIGHT;
++		this.contentArea?.parentElement?.classList.toggle('composery-compact-footer', compactFooter);
++
+ 		// Footer Size: Width (Fill), Height (Variable)
+ 		let footerSize: Dimension;
+-		if (this.footerVisible) {
++		if (this.footerVisible && !compactFooter) {
+ 			footerSize = new Dimension(width, Math.min(height, PartLayout.Footer_HEIGHT));
+ 		} else {
+ 			footerSize = Dimension.None;
+--- a/lib/vscode/src/vs/workbench/browser/parts/compositeBar.ts
++++ b/lib/vscode/src/vs/workbench/browser/parts/compositeBar.ts
+@@ -20,7 +20,7 @@ import { ViewContainerLocation, IViewDescriptorService } from '../../common/view
+ import { IPaneComposite } from '../../common/panecomposite.js';
+ import { IComposite } from '../../common/composite.js';
+ import { CompositeDragAndDropData, CompositeDragAndDropObserver, IDraggedCompositeData, ICompositeDragAndDrop, Before2D, toggleDropEffect, ICompositeDragAndDropObserverCallbacks } from '../dnd.js';
+-import { Gesture, EventType as TouchEventType, GestureEvent } from '../../../base/browser/touch.js';
++import { Gesture, GestureEvent } from '../../../base/browser/touch.js';
+ import { MutableDisposable } from '../../../base/common/lifecycle.js';
+ 
+ export interface ICompositeBarItem {
+@@ -312,8 +312,11 @@ export class CompositeBar extends Widget implements ICompositeBar {
+ 
+ 		// Contextmenu for composites
+ 		this._register(addDisposableListener(parent, EventType.CONTEXT_MENU, e => this.showContextMenu(getWindow(parent), e)));
++		// Composery: no gesture context menu listener - a long-press on a bar icon belongs to
++		// that icon's own item menu (compositeBarActions), same as right-click. Left
++		// unconsumed, Gesture re-fires the long-press as a native contextmenu from the touched
++		// element and the listener above handles only what bubbles out of the items.
+ 		this._register(Gesture.addTarget(parent));
+-		this._register(addDisposableListener(parent, TouchEventType.Contextmenu, e => this.showContextMenu(getWindow(parent), e)));
+ 
+ 		// Register a drop target on the whole bar to prevent forbidden feedback
+ 		const dndCallback = new CompositeBarDndCallbacks(parent, actionBarDiv, this.model, this.options.dndHandler, this.options.orientation);
+--- a/lib/vscode/src/vs/workbench/browser/parts/editor/editorGroupView.ts
++++ b/lib/vscode/src/vs/workbench/browser/parts/editor/editorGroupView.ts
+@@ -438,7 +438,9 @@ export class EditorGroupView extends Themable implements IEditorGroupView {
+ 
+ 	private createContainerContextMenu(): void {
+ 		this._register(addDisposableListener(this.element, EventType.CONTEXT_MENU, e => this.onShowContainerContextMenu(e)));
+-		this._register(addDisposableListener(this.element, TouchEventType.Contextmenu, () => this.onShowContainerContextMenu()));
++		// Composery: no gesture context menu listener - it never fired (the group is not a
++		// Gesture target) and would double the menu the day one is added; an unconsumed
++		// long-press comes back through Gesture's native contextmenu re-fire above.
+ 	}
+ 
+ 	private onShowContainerContextMenu(e?: MouseEvent): void {
+--- a/lib/vscode/src/vs/workbench/browser/parts/editor/multiEditorTabsControl.ts
++++ b/lib/vscode/src/vs/workbench/browser/parts/editor/multiEditorTabsControl.ts
+@@ -479,7 +479,8 @@ export class MultiEditorTabsControl extends EditorTabsControl {
+ 			});
+ 		};
+ 
+-		this._register(addDisposableListener(tabsContainer, TouchEventType.Contextmenu, e => showContextMenu(e)));
++		// Composery: no gesture context menu listener - an unconsumed long-press comes back
++		// through Gesture's native contextmenu re-fire and lands on the listener below.
+ 		this._register(addDisposableListener(tabsContainer, EventType.CONTEXT_MENU, e => showContextMenu(e)));
+ 	}
+ 
+@@ -997,10 +998,9 @@ export class MultiEditorTabsControl extends EditorTabsControl {
+ 			}
+ 		}));
+ 
+-		// Context menu on touch context menu gesture
+-		disposables.add(addDisposableListener(tab, TouchEventType.Contextmenu, (e: GestureEvent) => {
+-			showContextMenu(e);
+-		}));
++		// Composery: no gesture context menu listener - an unconsumed long-press comes back
++		// through Gesture's native contextmenu re-fire and lands on the CONTEXT_MENU
++		// listener below with the touched element as its target.
+ 
+ 		// Keyboard accessibility
+ 		disposables.add(addDisposableListener(tab, EventType.KEY_UP, e => {
+--- a/lib/vscode/src/vs/workbench/browser/parts/editor/singleEditorTabsControl.ts
++++ b/lib/vscode/src/vs/workbench/browser/parts/editor/singleEditorTabsControl.ts
+@@ -93,13 +93,13 @@ export class SingleEditorTabsControl extends EditorTabsControl {
+ 		this._register(addDisposableListener(titleContainer, TouchEventType.Tap, (e: GestureEvent) => this.onTitleTap(e)));
+ 
+ 		// Context Menu
+-		for (const event of [EventType.CONTEXT_MENU, TouchEventType.Contextmenu]) {
+-			this._register(addDisposableListener(titleContainer, event, e => {
+-				if (this.tabsModel.activeEditor) {
+-					this.onTabContextMenu(this.tabsModel.activeEditor, e, titleContainer);
+-				}
+-			}));
+-		}
++		// Composery: native only - an unconsumed long-press comes back through Gesture's
++		// native contextmenu re-fire, so a gesture leg would open this menu twice.
++		this._register(addDisposableListener(titleContainer, EventType.CONTEXT_MENU, e => {
++			if (this.tabsModel.activeEditor) {
++				this.onTabContextMenu(this.tabsModel.activeEditor, e, titleContainer);
++			}
++		}));
+ 	}
+ 
+ 	private onTitleLabelClick(e: MouseEvent): void {
+--- a/lib/vscode/src/vs/workbench/browser/parts/paneCompositePart.ts
++++ b/lib/vscode/src/vs/workbench/browser/parts/paneCompositePart.ts
+@@ -30,7 +30,7 @@ import { CompositeDragAndDropObserver, toggleDropEffect } from '../dnd.js';
+ import { EDITOR_DRAG_AND_DROP_BACKGROUND } from '../../common/theme.js';
+ import { IMenuService, MenuId } from '../../../platform/actions/common/actions.js';
+ import { ActionsOrientation } from '../../../base/browser/ui/actionbar/actionbar.js';
+-import { Gesture, EventType as GestureEventType } from '../../../base/browser/touch.js';
++import { Gesture } from '../../../base/browser/touch.js';
+ import { StandardMouseEvent } from '../../../base/browser/mouseEvent.js';
+ import { IAction, SubmenuAction } from '../../../base/common/actions.js';
+ import { Composite } from '../composite.js';
+@@ -338,10 +338,11 @@ export abstract class AbstractPaneCompositePart extends CompositePart<PaneCompos
+ 		this._register(addDisposableListener(titleArea, EventType.CONTEXT_MENU, e => {
+ 			this.onTitleAreaContextMenu(new StandardMouseEvent(getWindow(titleArea), e));
+ 		}));
++		// Composery: no gesture context menu listener - it fires on the title area itself and
++		// would take long-presses that belong to deeper controls (a toolbar button's own item
++		// menu). Left unconsumed, Gesture re-fires the long-press as a native contextmenu from
++		// the touched element, and DOM bubbling arbitrates exactly as it does for right-click.
+ 		this._register(Gesture.addTarget(titleArea));
+-		this._register(addDisposableListener(titleArea, GestureEventType.Contextmenu, e => {
+-			this.onTitleAreaContextMenu(new StandardMouseEvent(getWindow(titleArea), e));
+-		}));
+ 
+ 		const globalTitleActionsContainer = titleArea.appendChild($('.global-actions'));
+ 
+@@ -464,10 +465,8 @@ export abstract class AbstractPaneCompositePart extends CompositePart<PaneCompos
+ 		this.headerFooterCompositeBarDispoables.add(addDisposableListener(area, EventType.CONTEXT_MENU, e => {
+ 			this.onCompositeBarAreaContextMenu(new StandardMouseEvent(getWindow(area), e));
+ 		}));
++		// Composery: no gesture context menu listener - see the title area registration above.
+ 		this.headerFooterCompositeBarDispoables.add(Gesture.addTarget(area));
+-		this.headerFooterCompositeBarDispoables.add(addDisposableListener(area, GestureEventType.Contextmenu, e => {
+-			this.onCompositeBarAreaContextMenu(new StandardMouseEvent(getWindow(area), e));
+-		}));
+ 
+ 		return area;
+ 	}
+--- a/lib/vscode/src/vs/workbench/browser/parts/statusbar/statusbarPart.ts
++++ b/lib/vscode/src/vs/workbench/browser/parts/statusbar/statusbarPart.ts
+@@ -7,7 +7,7 @@ import './media/statusbarpart.css';
+ import { localize } from '../../../../nls.js';
+ import { Disposable, DisposableStore, disposeIfDisposable, IDisposable, MutableDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
+ import { MultiWindowParts, Part } from '../../part.js';
+-import { EventType as TouchEventType, Gesture, GestureEvent } from '../../../../base/browser/touch.js';
++import { Gesture, GestureEvent } from '../../../../base/browser/touch.js';
+ import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
+ import { StatusbarAlignment, IStatusbarService, IStatusbarEntry, IStatusbarEntryAccessor, IStatusbarStyleOverride, isStatusbarEntryLocation, IStatusbarEntryLocation, isStatusbarEntryPriority, IStatusbarEntryPriority } from '../../../services/statusbar/browser/statusbar.js';
+ import { IContextMenuService } from '../../../../platform/contextview/browser/contextView.js';
+@@ -443,8 +443,10 @@ class StatusbarPart extends Part implements IStatusbarEntryContainer {
+ 
+ 		// Context menu support
+ 		this._register(addDisposableListener(parent, EventType.CONTEXT_MENU, e => this.showContextMenu(e)));
++		// Composery: no gesture context menu listener - left unconsumed, Gesture re-fires the
++		// long-press as a native contextmenu from the touched element for the listener above,
++		// with real right-click semantics (entry-level targets resolve, not the part).
+ 		this._register(Gesture.addTarget(parent));
+-		this._register(addDisposableListener(parent, TouchEventType.Contextmenu, e => this.showContextMenu(e)));
+ 
+ 		// Initial status bar entries
+ 		this.createInitialStatusbarEntries();
+--- a/lib/vscode/src/vs/workbench/browser/parts/titlebar/menubarControl.ts
++++ b/lib/vscode/src/vs/workbench/browser/parts/titlebar/menubarControl.ts
+@@ -11,7 +11,8 @@ import { IContextKeyService } from '../../../../platform/contextkey/common/conte
+ import { IAction, Action, SubmenuAction, Separator, IActionRunner, ActionRunner, WorkbenchActionExecutedEvent, WorkbenchActionExecutedClassification, toAction } from '../../../../base/common/actions.js';
+ import { addDisposableListener, Dimension, EventType } from '../../../../base/browser/dom.js';
+ import { IKeybindingService } from '../../../../platform/keybinding/common/keybinding.js';
+-import { isMacintosh, isWeb, isIOS, isNative } from '../../../../base/common/platform.js';
++import { isMacintosh, isWeb, isNative } from '../../../../base/common/platform.js';
++import { isTouch } from '../../../../base/browser/touchGate.js';
+ import { IConfigurationService, IConfigurationChangeEvent } from '../../../../platform/configuration/common/configuration.js';
+ import { Event, Emitter } from '../../../../base/common/event.js';
+ import { Disposable, DisposableStore } from '../../../../base/common/lifecycle.js';
+@@ -30,7 +31,6 @@ import { mnemonicMenuLabel, unmnemonicLabel } from '../../../../base/common/labe
+ import { IAccessibilityService } from '../../../../platform/accessibility/common/accessibility.js';
+ import { isFullscreen, onDidChangeFullscreen } from '../../../../base/browser/browser.js';
+ import { IHostService } from '../../../services/host/browser/host.js';
+-import { BrowserFeatures } from '../../../../base/browser/canIUse.js';
+ import { KeyCode, KeyMod } from '../../../../base/common/keyCodes.js';
+ import { KeybindingWeight } from '../../../../platform/keybinding/common/keybindingsRegistry.js';
+ import { IsWebContext } from '../../../../platform/contextkey/common/contextkeys.js';
+@@ -732,7 +732,9 @@ export class CustomMenubarControl extends MenubarControl {
+ 		super.registerListeners();
+ 
+ 		this._register(addDisposableListener(mainWindow, EventType.RESIZE, () => {
+-			if (this.menubar && !(isIOS && BrowserFeatures.pointerEvents)) {
++			// Composery: same soft-keyboard resize as contextview.ts layout() - blurring here
++			// would close the menu the keyboard hid for. iOS was already exempt; gate all touch.
++			if (this.menubar && !isTouch(mainWindow)) {
+ 				this.menubar.blur();
+ 			}
+ 		}));
+--- a/lib/vscode/src/vs/workbench/browser/parts/views/viewPaneContainer.ts
++++ b/lib/vscode/src/vs/workbench/browser/parts/views/viewPaneContainer.ts
+@@ -5,7 +5,7 @@
+ 
+ import { $, addDisposableListener, Dimension, DragAndDropObserver, EventType, getWindow, isAncestor } from '../../../../base/browser/dom.js';
+ import { StandardMouseEvent } from '../../../../base/browser/mouseEvent.js';
+-import { EventType as TouchEventType, Gesture } from '../../../../base/browser/touch.js';
++import { Gesture } from '../../../../base/browser/touch.js';
+ import { IActionViewItem } from '../../../../base/browser/ui/actionbar/actionbar.js';
+ import { IBoundarySashes, Orientation } from '../../../../base/browser/ui/sash/sash.js';
+ import { IPaneViewOptions, PaneView } from '../../../../base/browser/ui/splitview/paneview.js';
+@@ -393,8 +393,11 @@ export class ViewPaneContainer<MementoType extends object = object> extends Comp
+ 		this._register(this.paneview.onDidScroll(_ => this.onDidScrollPane()));
+ 		this._register(this.paneview.onDidSashReset((index) => this.onDidSashReset(index)));
+ 		this._register(addDisposableListener(parent, EventType.CONTEXT_MENU, (e: MouseEvent) => this.showContextMenu(new StandardMouseEvent(getWindow(parent), e))));
++		// Composery: no gesture context menu listener - it fires on the container element, so
++		// showContextMenu's target check cannot tell empty space from pane content. Left
++		// unconsumed, Gesture re-fires the long-press as a native contextmenu from the touched
++		// element, and the listener above sees it with real right-click semantics.
+ 		this._register(Gesture.addTarget(parent));
+-		this._register(addDisposableListener(parent, TouchEventType.Contextmenu, (e: MouseEvent) => this.showContextMenu(new StandardMouseEvent(getWindow(parent), e))));
+ 
+ 		this._menuActions = this._register(this.instantiationService.createInstance(ViewContainerMenuActions, this.paneview.element, this.viewContainer, undefined));
+ 		this._register(this._menuActions.onDidChange(() => this.updateTitleArea()));
+--- a/lib/vscode/src/vs/workbench/browser/style.ts
++++ b/lib/vscode/src/vs/workbench/browser/style.ts
+@@ -6,9 +6,10 @@
+ import './media/style.css';
+ import { registerThemingParticipant } from '../../platform/theme/common/themeService.js';
+ import { WORKBENCH_BACKGROUND, TITLE_BAR_ACTIVE_BACKGROUND } from '../common/theme.js';
+-import { isWeb, isIOS } from '../../base/common/platform.js';
++import { isWeb } from '../../base/common/platform.js';
+ import { createMetaElement } from '../../base/browser/dom.js';
+-import { isSafari, isStandalone } from '../../base/browser/browser.js';
++import { isSafari } from '../../base/browser/browser.js';
++import { isTouch } from '../../base/browser/touchGate.js';
+ import { selectionBackground } from '../../platform/theme/common/colorRegistry.js';
+ import { mainWindow } from '../../base/browser/window.js';
+ 
+@@ -57,7 +58,10 @@ registerThemingParticipant((theme, collector) => {
+ 	}
+ 
+ 	// Update body background color to ensure the home indicator area looks similar to the workbench
+-	if (isIOS && isStandalone()) {
++	// Composery: also paint the page canvas behind the edge-to-edge bottom inset the workbench
++	// keeps clear of on any touch device (see the touch.diff layout fit), not just the
++	// standalone iOS home indicator.
++	if (isTouch(mainWindow)) {
+ 		collector.addRule(`body { background-color: ${workbenchBackground}; }`);
+ 	}
+ });
+--- a/lib/vscode/src/vs/workbench/browser/window.ts
++++ b/lib/vscode/src/vs/workbench/browser/window.ts
+@@ -4,14 +4,16 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ import { isSafari, setFullscreen } from '../../base/browser/browser.js';
+-import { addDisposableListener, EventHelper, EventType, getWindow, getWindowById, getWindows, getWindowsCount, hasAppFocus, windowOpenNoOpener, windowOpenPopup, windowOpenWithSuccess } from '../../base/browser/dom.js';
++import { addDisposableListener, EventHelper, EventType, getWindow, getWindowById, getWindows, getWindowsCount, hasAppFocus, isEditableElement, windowOpenNoOpener, windowOpenPopup, windowOpenWithSuccess } from '../../base/browser/dom.js';
++import { isTouch } from '../../base/browser/touchGate.js';
++import { ImeEnterFallback } from '../../base/browser/imeEnter.js';
+ import { DomEmitter } from '../../base/browser/event.js';
+ import { HidDeviceData, requestHidDevice, requestSerialPort, requestUsbDevice, SerialPortData, UsbDeviceData } from '../../base/browser/deviceAccess.js';
+ import { timeout } from '../../base/common/async.js';
+ import { Event } from '../../base/common/event.js';
+ import { Disposable, IDisposable, dispose, toDisposable } from '../../base/common/lifecycle.js';
+ import { matchesScheme, Schemas } from '../../base/common/network.js';
+-import { isIOS, isMacintosh } from '../../base/common/platform.js';
++import { isMacintosh } from '../../base/common/platform.js';
+ import Severity from '../../base/common/severity.js';
+ import { URI } from '../../base/common/uri.js';
+ import { localize } from '../../nls.js';
+@@ -259,21 +261,61 @@ export class BrowserWindow extends BaseWindow {
+ 		this._register(this.lifecycleService.onWillShutdown(() => this.onWillShutdown()));
+ 
+ 		// Layout
+-		const viewport = isIOS && mainWindow.visualViewport ? mainWindow.visualViewport /** Visual viewport */ : mainWindow /** Layout viewport */;
++		// Composery: mobile browsers resize only the visual viewport for the on-screen
++		// keyboard (and the dynamic browser UI) - drive layout from it on every touch
++		// device. Upstream keyed this to iOS; Android behaves the same way, and a
++		// coarse-pointer device we cannot name yet is exactly what the gate is for.
++		const viewport = isTouch(mainWindow) && mainWindow.visualViewport ? mainWindow.visualViewport /** Visual viewport */ : mainWindow /** Layout viewport */;
+ 		this._register(addDisposableListener(viewport, EventType.RESIZE, () => {
+ 			this.layoutService.layout();
+ 
+ 			// Sometimes the keyboard appearing scrolls the whole workbench out of view, as a workaround scroll back into view #121206
+-			if (isIOS) {
++			if (viewport !== mainWindow) {
+ 				mainWindow.scrollTo(0, 0);
+ 			}
+ 		}));
++		// Composery: with interactive-widget=resizes-content the keyboard also resizes the
++		// LAYOUT viewport, and its final at-rest geometry can arrive as a window resize
++		// after the last visualViewport event of the animation - with only the
++		// visualViewport listener above, that last layout() runs on transitional geometry
++		// and the workbench stays wedged at the keyboard-open height. Listen to both.
++		if (viewport !== mainWindow) {
++			this._register(addDisposableListener(mainWindow, EventType.RESIZE, () => {
++				this.layoutService.layout();
++				mainWindow.scrollTo(0, 0);
++			}));
++		}
++		// Composery: the same keyboard reveal can scroll the document without a resize
++		// (visualViewport fires only 'scroll') - the workbench slides up leaving blank
++		// canvas below. Undo it; guard on scale so pinch-zoom panning is left alone.
++		if (viewport !== mainWindow && mainWindow.visualViewport) {
++			this._register(addDisposableListener(mainWindow.visualViewport, EventType.SCROLL, () => {
++				if (mainWindow.visualViewport!.scale === 1 && (mainWindow.scrollX !== 0 || mainWindow.scrollY !== 0)) {
++					mainWindow.scrollTo(0, 0);
++				}
++			}));
++		}
+ 
+ 		// Prevent the back/forward gestures in macOS
+ 		this._register(addDisposableListener(this.layoutService.mainContainer, EventType.WHEEL, e => e.preventDefault(), { passive: false }));
+ 
+-		// Prevent native context menus in web
+-		this._register(addDisposableListener(this.layoutService.mainContainer, EventType.CONTEXT_MENU, e => EventHelper.stop(e, true)));
++		// Prevent native context menus in web - except, on touch, over a real editable control
++		// (input/textarea). There the OS's own text-selection toolbar (Cut/Copy/Paste/Select all
++		// plus Web search/Look up/Open in...) is the better fit for a plain field and is what iOS
++		// shows anyway, so we let it through - TextInputActionsProvider steps aside on touch too.
++		// The code editor is unaffected: its target is a non-editable lines <div>, and its hidden
++		// input (inputarea / native-edit-context) is excluded here.
++		this._register(addDisposableListener(this.layoutService.mainContainer, EventType.CONTEXT_MENU, e => {
++			const target = e.target;
++			if (isTouch(getWindow(this.layoutService.mainContainer)) && target instanceof HTMLElement && isEditableElement(target) && !target.classList.contains('inputarea') && !target.classList.contains('native-edit-context')) {
++				return;
++			}
++			EventHelper.stop(e, true);
++		}));
++
++		// Composery: replay soft-keyboard line-break commits as Enter keydowns so
++		// Enter-only flows stay reachable on touch (see ImeEnterFallback).
++		this._register(new ImeEnterFallback());
+ 
+ 		// Prevent default navigation on drop
+ 		this._register(addDisposableListener(this.layoutService.mainContainer, EventType.DROP, e => EventHelper.stop(e, true)));
+--- a/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionsViewlet.ts
++++ b/lib/vscode/src/vs/workbench/contrib/extensions/browser/extensionsViewlet.ts
+@@ -4,6 +4,8 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ import './media/extensionsViewlet.css';
++import { isTouch } from '../../../../base/browser/touchGate.js';
++import { mainWindow } from '../../../../base/browser/window.js';
+ import { localize, localize2 } from '../../../../nls.js';
+ import { timeout, Delayer } from '../../../../base/common/async.js';
+ import { isCancellationError } from '../../../../base/common/errors.js';
+@@ -727,7 +729,12 @@ export class ExtensionsViewPaneContainer extends ViewPaneContainer<IExtensionsVi
+ 
+ 	override focus(): void {
+ 		super.focus();
+-		this.searchBox?.focus();
++		// Composery: on touch, focusing the marketplace search just because the view
++		// opened pops the on-screen keyboard over the list the user came to read. A
++		// tap on the box still focuses it.
++		if (!isTouch(mainWindow)) {
++			this.searchBox?.focus();
++		}
+ 	}
+ 
+ 	private _dimension: Dimension | undefined;
+--- a/lib/vscode/src/vs/workbench/contrib/preferences/browser/keybindingWidgets.ts
++++ b/lib/vscode/src/vs/workbench/contrib/preferences/browser/keybindingWidgets.ts
+@@ -134,6 +134,8 @@ export class KeybindingsSearchWidget extends SearchWidget {
+ 
+ export class DefineKeybindingWidget extends Widget {
+ 
++	// Composery: 400 hangs off both edges of a phone (left goes negative below
++	// 400px); layout() clamps it to the viewport instead.
+ 	private static readonly WIDTH = 400;
+ 	private static readonly HEIGHT = 110;
+ 
+@@ -220,7 +222,9 @@ export class DefineKeybindingWidget extends Widget {
+ 		const top = Math.round((layout.height - DefineKeybindingWidget.HEIGHT) / 2);
+ 		this._domNode.setTop(top);
+ 
+-		const left = Math.round((layout.width - DefineKeybindingWidget.WIDTH) / 2);
++		const width = Math.min(DefineKeybindingWidget.WIDTH, layout.width - 16);
++		this._domNode.setWidth(width);
++		const left = Math.round((layout.width - width) / 2);
+ 		this._domNode.setLeft(left);
+ 	}
+ 
+--- a/lib/vscode/src/vs/workbench/contrib/preferences/browser/keybindingsEditor.ts
++++ b/lib/vscode/src/vs/workbench/contrib/preferences/browser/keybindingsEditor.ts
+@@ -8,7 +8,9 @@ import './media/keybindingsEditor.css';
+ import { localize } from '../../../../nls.js';
+ import { Delayer } from '../../../../base/common/async.js';
+ import * as DOM from '../../../../base/browser/dom.js';
+-import { isIOS, OS } from '../../../../base/common/platform.js';
++import { OS } from '../../../../base/common/platform.js';
++import { isTouch } from '../../../../base/browser/touchGate.js';
++import { mainWindow } from '../../../../base/browser/window.js';
+ import { Disposable, DisposableStore, IDisposable, toDisposable } from '../../../../base/common/lifecycle.js';
+ import { ToggleActionViewItem } from '../../../../base/browser/ui/toggle/toggle.js';
+ import { HighlightedLabel } from '../../../../base/browser/ui/highlightedlabel/highlightedLabel.js';
+@@ -207,7 +209,9 @@ export class KeybindingsEditor extends EditorPane<IKeybindingsEditorMemento> imp
+ 		const activeKeybindingEntry = this.activeKeybindingEntry;
+ 		if (activeKeybindingEntry) {
+ 			this.selectEntry(activeKeybindingEntry);
+-		} else if (!isIOS) {
++		} else if (!isTouch(mainWindow)) {
++			// Composery: as upstream does for iOS, do not pop the on-screen keyboard
++			// just because the editor was focused.
+ 			this.searchWidget.focus();
+ 		}
+ 	}
+--- a/lib/vscode/src/vs/workbench/contrib/preferences/browser/settingsEditor2.ts
++++ b/lib/vscode/src/vs/workbench/contrib/preferences/browser/settingsEditor2.ts
+@@ -11,7 +11,8 @@ import { Button } from '../../../../base/browser/ui/button/button.js';
+ import { Orientation, Sizing, SplitView } from '../../../../base/browser/ui/splitview/splitview.js';
+ import { ToggleActionViewItem } from '../../../../base/browser/ui/toggle/toggle.js';
+ import { ITreeElement } from '../../../../base/browser/ui/tree/tree.js';
+-import { CodeWindow } from '../../../../base/browser/window.js';
++import { isTouch } from '../../../../base/browser/touchGate.js';
++import { CodeWindow, mainWindow } from '../../../../base/browser/window.js';
+ import { Action } from '../../../../base/common/actions.js';
+ import { CancelablePromise, createCancelablePromise, Delayer, raceTimeout } from '../../../../base/common/async.js';
+ import { CancellationToken, CancellationTokenSource } from '../../../../base/common/cancellation.js';
+@@ -578,8 +579,9 @@ export class SettingsEditor2 extends EditorPane {
+ 	}
+ 
+ 	private _setOptions(options: ISettingsEditorOptions): void {
+-		if (options.focusSearch && !platform.isIOS) {
+-			// isIOS - #122044
++		// Composery: auto-focusing search pops the on-screen keyboard over the just-opened
++		// editor - upstream #122044 exempted iOS only; gate every touch device.
++		if (options.focusSearch && !isTouch(mainWindow)) {
+ 			this.focusSearch();
+ 		}
+ 
+@@ -624,8 +626,8 @@ export class SettingsEditor2 extends EditorPane {
+ 		super.focus();
+ 
+ 		if (this._currentFocusContext === SettingsFocusContext.Search) {
+-			if (!platform.isIOS) {
+-				// #122044
++			if (!isTouch(mainWindow)) {
++				// Composery: touch, not just iOS - #122044
+ 				this.focusSearch();
+ 			}
+ 		} else if (this._currentFocusContext === SettingsFocusContext.SettingControl) {
+@@ -634,7 +636,9 @@ export class SettingsEditor2 extends EditorPane {
+ 				// eslint-disable-next-line no-restricted-syntax
+ 				const control = element.querySelector(AbstractSettingRenderer.CONTROL_SELECTOR);
+ 				if (control) {
+-					(<HTMLElement>control).focus();
++					// Composery: the tree already revealed this row; the browser's focus
++					// reveal would scroll it again and pan the mobile viewport.
++					(<HTMLElement>control).focus({ preventScroll: true });
+ 					return;
+ 				}
+ 			}
+@@ -669,7 +673,7 @@ export class SettingsEditor2 extends EditorPane {
+ 			// eslint-disable-next-line no-restricted-syntax
+ 			const controlInFocusedRow = this.settingsTree.getHTMLElement().querySelector(`.focused ${AbstractSettingRenderer.CONTROL_SELECTOR}`);
+ 			if (controlInFocusedRow) {
+-				(<HTMLElement>controlInFocusedRow).focus();
++				(<HTMLElement>controlInFocusedRow).focus({ preventScroll: true }); // Composery: no browser reveal
+ 			}
+ 		}
+ 	}
+@@ -980,7 +984,7 @@ export class SettingsEditor2 extends EditorPane {
+ 					// eslint-disable-next-line no-restricted-syntax
+ 					const control = domElements[0].querySelector(AbstractSettingRenderer.CONTROL_SELECTOR);
+ 					if (control) {
+-						(<HTMLElement>control).focus();
++						(<HTMLElement>control).focus({ preventScroll: true }); // Composery: no browser reveal
+ 					}
+ 				}
+ 			}
+@@ -1074,7 +1078,9 @@ export class SettingsEditor2 extends EditorPane {
+ 		this.splitView.addView({
+ 			onDidChange: Event.None,
+ 			element: this.settingsTreeContainer,
+-			minimumSize: SettingsEditor2.EDITOR_MIN_WIDTH,
++			// Composery: the narrow editor already hides the table of contents, so
++			// allow its remaining pane to fit phone viewports without clipping text.
++			minimumSize: 240,
+ 			maximumSize: Number.POSITIVE_INFINITY,
+ 			layout: (width, _, height) => {
+ 				this.settingsTreeContainer.style.width = `${width}px`;
+--- a/lib/vscode/src/vs/workbench/contrib/preferences/browser/settingsWidgets.ts
++++ b/lib/vscode/src/vs/workbench/contrib/preferences/browser/settingsWidgets.ts
+@@ -329,7 +329,9 @@ export abstract class AbstractListSettingWidget<TDataItem extends object> extend
+ 		this.addTooltipsToRow(rowElementGroup, item);
+ 
+ 		if (item.selected && listFocused) {
+-			disposableTimeout(() => rowElement.focus(), undefined, this.listDisposables);
++			// Composery: focusing a row inside the virtualized settings tree must not let
++			// the browser re-reveal it (it scrolls the tree and pans the mobile viewport).
++			disposableTimeout(() => rowElement.focus({ preventScroll: true }), undefined, this.listDisposables);
+ 		}
+ 
+ 		this.listDisposables.add(DOM.addDisposableListener(rowElement, 'click', (e) => {
+@@ -661,7 +663,7 @@ export class ListSettingWidget<TListDataItem extends IListDataItem> extends Abst
+ 				e.preventDefault();
+ 				e.stopPropagation();
+ 			}
+-			rowElement?.focus();
++			rowElement?.focus({ preventScroll: true }); // Composery: no browser reveal
+ 		};
+ 
+ 		if (item.value.type !== 'string') {
+--- a/lib/vscode/src/vs/workbench/contrib/sash/browser/sash.contribution.ts
++++ b/lib/vscode/src/vs/workbench/contrib/sash/browser/sash.contribution.ts
+@@ -3,10 +3,11 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
+-import { isIOS } from '../../../../base/common/platform.js';
++import { mainWindow } from '../../../../base/browser/window.js';
+ import { localize } from '../../../../nls.js';
+ import { IConfigurationRegistry, Extensions as ConfigurationExtensions } from '../../../../platform/configuration/common/configurationRegistry.js';
+ import { Registry } from '../../../../platform/registry/common/platform.js';
++import { isTouch } from '../../../../base/browser/touchGate.js';
+ import { workbenchConfigurationNodeBase } from '../../../common/configuration.js';
+ import { registerWorkbenchContribution2, WorkbenchPhase } from '../../../common/contributions.js';
+ import { SashSettingsController } from './sash.js';
+@@ -21,7 +22,9 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration)
+ 		properties: {
+ 			'workbench.sash.size': {
+ 				type: 'number',
+-				default: isIOS ? 20 : 4,
++				// Composery: upstream widens the grab area on iOS only; every coarse-pointer
++				// device needs it (Android included), so key off the canonical touch gate.
++				default: isTouch(mainWindow) ? 20 : 4,
+ 				minimum: 1,
+ 				maximum: 20,
+ 				description: localize('sashSize', "Controls the feedback area size in pixels of the dragging area in between views/editors. Set it to a larger value if you feel it's hard to resize views using the mouse.")
+--- a/lib/vscode/src/vs/workbench/contrib/scm/browser/scmViewPane.ts
++++ b/lib/vscode/src/vs/workbench/contrib/scm/browser/scmViewPane.ts
+@@ -4,6 +4,8 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ import './media/scm.css';
++import { isTouch } from '../../../../base/browser/touchGate.js';
++import { mainWindow } from '../../../../base/browser/window.js';
+ import { Event, Emitter } from '../../../../base/common/event.js';
+ import { basename, dirname } from '../../../../base/common/resources.js';
+ import { IDisposable, Disposable, DisposableStore, combinedDisposable, dispose, toDisposable, MutableDisposable, DisposableMap } from '../../../../base/common/lifecycle.js';
+@@ -2157,7 +2159,9 @@ export class SCMViewPane extends ViewPane {
+ 		this.treeOperationSequencer.queue(() => {
+ 			return new Promise<void>(resolve => {
+ 				if (this.isExpanded()) {
+-					if (this.tree.getFocus().length === 0) {
++					// Composery: on touch, auto-focusing the commit box would pop the
++					// on-screen keyboard over the changes tree just for opening the view.
++					if (this.tree.getFocus().length === 0 && !isTouch(mainWindow)) {
+ 						for (const repository of this.scmViewService.visibleRepositories) {
+ 							const widget = this.inputRenderer.getRenderedInputWidget(repository.input);
+ 
+--- a/lib/vscode/src/vs/workbench/contrib/search/browser/searchView.ts
++++ b/lib/vscode/src/vs/workbench/contrib/search/browser/searchView.ts
+@@ -4,6 +4,8 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ import * as dom from '../../../../base/browser/dom.js';
++import { isTouch } from '../../../../base/browser/touchGate.js';
++import { mainWindow } from '../../../../base/browser/window.js';
+ import { StandardKeyboardEvent } from '../../../../base/browser/keyboardEvent.js';
+ import * as aria from '../../../../base/browser/ui/aria/aria.js';
+ import { MessageType } from '../../../../base/browser/ui/inputbox/inputBox.js';
+@@ -1223,7 +1225,10 @@ export class SearchView extends ViewPane {
+ 
+ 	override focus(): void {
+ 		super.focus();
+-		if (this.lastFocusState === 'input' || !this.hasSearchResults()) {
++		// Composery: on touch, only a view that has nothing to show may claim the
++		// keyboard - refocusing the query box over existing results hides the very
++		// results the user came back to (upstream's iOS #122044 family).
++		if ((this.lastFocusState === 'input' && !isTouch(mainWindow)) || !this.hasSearchResults()) {
+ 			const updatedText = this.searchConfig.seedOnFocus ? this.updateTextFromSelection({ allowSearchOnType: false }) : false;
+ 			this.searchWidget.focus(undefined, undefined, updatedText);
+ 		} else {
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstance.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminalInstance.ts
+@@ -8,6 +8,8 @@ import { BrowserFeatures } from '../../../../base/browser/canIUse.js';
+ import { DataTransfers } from '../../../../base/browser/dnd.js';
+ import * as dom from '../../../../base/browser/dom.js';
+ import { StandardKeyboardEvent } from '../../../../base/browser/keyboardEvent.js';
++import { softKeyboard } from '../../../../base/browser/softKeyboard.js';
++import { Gesture, EventType as TouchEventType } from '../../../../base/browser/touch.js';
+ import { Orientation } from '../../../../base/browser/ui/sash/sash.js';
+ import { DomScrollableElement } from '../../../../base/browser/ui/scrollbar/scrollableElement.js';
+ import { AutoOpenBarrier, Promises, disposableTimeout, timeout } from '../../../../base/common/async.js';
+@@ -65,6 +67,7 @@ import { getColorClass, createColorStyleElement, getStandardColors } from './ter
+ import { TerminalProcessManager } from './terminalProcessManager.js';
+ import { ITerminalStatusList, TerminalStatus, TerminalStatusList } from './terminalStatusList.js';
+ import { getTerminalResourcesFromDragEvent, getTerminalUri } from './terminalUri.js';
++import { TouchKeyboard } from './touchKeyboard.js';
+ import { TerminalWidgetManager } from './widgets/widgetManager.js';
+ import { LineDataEventAddon } from './xterm/lineDataEventAddon.js';
+ import { XtermTerminal, getXtermScaledDimensions } from './xterm/xtermTerminal.js';
+@@ -1130,6 +1133,13 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
+ 			throw new Error('xterm elements not set after open');
+ 		}
+ 
++		// Composery: a terminal is not prose - the on-screen keyboard must not offer
++		// dictionary suggestions or autocorrect over shell input. xterm sets
++		// autocorrect/autocapitalize/spellcheck off on this textarea, but Android maps the
++		// suggestion strip (TYPE_TEXT_FLAG_NO_SUGGESTIONS, which also overrides autocorrect)
++		// off only from autocomplete=off, which xterm omits. Set it so Gboard shows no strip
++		// and no corrections; harmless on desktop, where the attribute has no soft keyboard.
++		xterm.raw.textarea.setAttribute('autocomplete', 'off');
+ 		this._setAriaLabel(xterm.raw, this._instanceId, this._title);
+ 
+ 		xterm.raw.attachCustomKeyEventHandler((event: KeyboardEvent): boolean => {
+@@ -1202,9 +1212,31 @@ export class TerminalInstance extends Disposable implements ITerminalInstance {
+ 				listener.dispose();
+ 			});
+ 		}));
+-		this._register(dom.addDisposableListener(xterm.raw.element, 'touchstart', () => {
++		// Composery: focus on Tap rather than raw touchstart - a touch that begins a scroll
++		// of the terminal buffer is not a request to make the terminal the active surface.
++		// The keyboard is a separate question, and focus is no lever on it: xterm holds this
++		// textarea focused with the keyboard dismissed, so what raises the keyboard again is
++		// the browser, for any press landing on the focused editable - it does that even
++		// though this sequence is preventDefault()ed end to end. touchKeyboard.ts holds the
++		// browser off between taps; the blur drops a hold that has nothing left to guard.
++		this._register(Gesture.addTarget(xterm.raw.element));
++		const touchKeyboard = new TouchKeyboard(xterm.raw.textarea);
++		this._register(dom.addDisposableListener(xterm.raw.element, TouchEventType.Start, () => {
++			touchKeyboard.press(softKeyboard(dom.getWindow(xterm.raw.element)).open);
++		}));
++		this._register(dom.addDisposableListener(xterm.raw.element, TouchEventType.Tap, () => {
++			touchKeyboard.tap(softKeyboard(dom.getWindow(xterm.raw.element)).open);
+ 			xterm.raw.focus();
+ 		}));
++		this._register(dom.addDisposableListener(xterm.raw.textarea, dom.EventType.BLUR, () => {
++			touchKeyboard.release();
++		}));
++		// Composery: every other refresh of the selection context keys hangs off a mouse or
++		// key event, so a selection made by a long-press - which produces neither, and does
++		// not focus the terminal either, since that would pop the keyboard over it - left
++		// Copy disabled in the very menu the selection was made for. The selection changing
++		// is the event that matters.
++		this._register(xterm.raw.onSelectionChange(() => this._refreshSelectionContextKey()));
+ 
+ 		// xterm.js currently drops selection on keyup as we need to handle this case.
+ 		this._register(dom.addDisposableListener(xterm.raw.element, 'keyup', () => {
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/xterm-private.d.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/xterm-private.d.ts
+@@ -17,6 +17,15 @@ export interface IXtermCore {
+ 		_curAttrData: XtermAttributes;
+ 	};
+ 
++	// Composery: xterm's own selection, for the two things a touch selection needs and the
++	// public Terminal API does not expose: whether a point is inside the selection, and word
++	// selection under a press. Reimplementing either would mean a second copy of xterm's word
++	// rules (wordSeparator, wide characters, wrapped lines) that drifts from the real one.
++	_selectionService: {
++		isCellInSelection(x: number, y: number): boolean;
++		rightClickSelect(event: MouseEvent): void;
++	};
++
+ 	_renderService: {
+ 		dimensions: {
+ 			css: {
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/terminal.all.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/terminal.all.ts
+@@ -35,5 +35,7 @@ import '../terminalContrib/sendSequence/browser/terminal.sendSequence.contributi
+ import '../terminalContrib/sendSignal/browser/terminal.sendSignal.contribution.js';
+ import '../terminalContrib/suggest/browser/terminal.suggest.contribution.js';
+ import '../terminalContrib/telemetry/browser/terminal.telemetry.contribution.js';
++// Composery: terminal text selection by touch (a whole contribution of ours, in the overlay).
++import '../terminalContrib/touchSelection/browser/terminal.touchSelection.contribution.js';
+ import '../terminalContrib/wslRecommendation/browser/terminal.wslRecommendation.contribution.js';
+ import '../terminalContrib/voice/browser/terminal.voice.contribution.js';
+--- a/lib/vscode/src/vs/workbench/contrib/terminalContrib/inlineHint/browser/terminal.initialHint.contribution.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminalContrib/inlineHint/browser/terminal.initialHint.contribution.ts
+@@ -9,6 +9,7 @@ import { StandardMouseEvent } from '../../../../../base/browser/mouseEvent.js';
+ import { status } from '../../../../../base/browser/ui/aria/aria.js';
+ import { KeybindingLabel } from '../../../../../base/browser/ui/keybindingLabel/keybindingLabel.js';
+ import { WorkbenchActionExecutedClassification, WorkbenchActionExecutedEvent } from '../../../../../base/common/actions.js';
++import { Gesture } from '../../../../../base/browser/touch.js';
+ import { Emitter, Event } from '../../../../../base/common/event.js';
+ import { Disposable, DisposableStore, MutableDisposable } from '../../../../../base/common/lifecycle.js';
+ import { OS } from '../../../../../base/common/platform.js';
+@@ -426,6 +427,9 @@ class TerminalInitialHintWidget extends Disposable {
+ 
+ 			this._domNode = $('.terminal-initial-hint');
+ 			this._domNode!.style.paddingLeft = '4px';
++			// Composery: the pane body is a Gesture target and Gesture suppresses synthetic
++			// clicks inside targets; exempt the hint so taps reach its click handlers.
++			this._toDispose.add(Gesture.ignoreTarget(this._domNode));
+ 
+ 			this._domNode.append(hintElement);
+ 			this._ariaLabel = ariaLabel.concat(localize('disableHint', ' Toggle {0} in settings to disable this hint.', AccessibilityVerbositySettingId.TerminalInlineChat));
+--- a/lib/vscode/src/vs/workbench/contrib/terminalContrib/links/browser/terminal.links.contribution.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminalContrib/links/browser/terminal.links.contribution.ts
+@@ -4,11 +4,16 @@
+  *--------------------------------------------------------------------------------------------*/
+ 
+ import type { Terminal as RawXtermTerminal } from '@xterm/xterm';
++import * as dom from '../../../../../base/browser/dom.js';
++import { EventType as TouchEventType, GestureEvent } from '../../../../../base/browser/touch.js';
++import { isTouch } from '../../../../../base/browser/touchGate.js';
++import { mainWindow } from '../../../../../base/browser/window.js';
+ import { Event } from '../../../../../base/common/event.js';
+ import { KeyCode, KeyMod } from '../../../../../base/common/keyCodes.js';
+ import { DisposableStore } from '../../../../../base/common/lifecycle.js';
+ import { localize2 } from '../../../../../nls.js';
+ import { AccessibleViewProviderId } from '../../../../../platform/accessibility/browser/accessibleView.js';
++import { MenuId, MenuRegistry } from '../../../../../platform/actions/common/actions.js';
+ import { ContextKeyExpr } from '../../../../../platform/contextkey/common/contextkey.js';
+ import { InstantiationType, registerSingleton } from '../../../../../platform/instantiation/common/extensions.js';
+ import { IInstantiationService } from '../../../../../platform/instantiation/common/instantiation.js';
+@@ -16,6 +21,7 @@ import { KeybindingWeight } from '../../../../../platform/keybinding/common/keyb
+ import { accessibleViewCurrentProviderId, accessibleViewIsShown } from '../../../accessibility/browser/accessibilityConfiguration.js';
+ import { ITerminalContribution, ITerminalInstance, IXtermTerminal, isDetachedTerminalInstance } from '../../../terminal/browser/terminal.js';
+ import { registerActiveInstanceAction } from '../../../terminal/browser/terminalActions.js';
++import { TerminalContextMenuGroup } from '../../../terminal/browser/terminalMenus.js';
+ import { registerTerminalContribution, type IDetachedCompatibleTerminalContributionContext, type ITerminalContributionContext } from '../../../terminal/browser/terminalExtensions.js';
+ import { isTerminalProcessManager } from '../../../terminal/common/terminal.js';
+ import { TerminalContextKeys } from '../../../terminal/common/terminalContextKey.js';
+@@ -80,6 +86,24 @@ class TerminalLinkContribution extends DisposableStore implements ITerminalContr
+ 		linkManager.add(this._terminalLinkProviderService.onDidRemoveLinkProvider(() => linkManager.externalProvideLinksCb = undefined));
+ 	}
+ 
++	// Composery: no ctrl exists on a touch screen, and the terminal is already a Gesture
++	// target (terminalInstance, for tap-to-focus), so a tap arrives here as a gesture Tap
++	// rather than as a click - hit-test the cell it landed on. This waits for xtermOpen
++	// because that is when the terminal has a DOM element to listen on; the link manager
++	// is read per tap, since which of xtermReady and xtermOpen runs first depends on
++	// whether the terminal was attached before its xterm resolved (device-verified: it
++	// can be, and capturing the manager here left every tap inert).
++	xtermOpen(xterm: IXtermTerminal & { raw: RawXtermTerminal }): void {
++		const element = xterm.raw.element;
++		if (!element || !isTouch(dom.getWindow(element))) {
++			return;
++		}
++		this.add(dom.addDisposableListener(element, TouchEventType.Tap, (e: GestureEvent) => {
++			const targetWindow = dom.getWindow(element);
++			this._linkManager?.openLinkAt(e.pageX - targetWindow.scrollX, e.pageY - targetWindow.scrollY);
++		}));
++	}
++
+ 	async showLinkQuickpick(extended?: boolean): Promise<void> {
+ 		if (!this._terminalLinkQuickpick) {
+ 			this._terminalLinkQuickpick = this.add(this._instantiationService.createInstance(TerminalLinkQuickpick));
+@@ -132,6 +156,18 @@ registerActiveInstanceAction({
+ 	],
+ 	run: (activeInstance) => TerminalLinkContribution.get(activeInstance)?.showLinkQuickpick()
+ });
++// Composery: hover tooltips and ctrl+click do not exist on touch - give the link quick
++// pick a long-press home in the terminal context menu there.
++if (isTouch(mainWindow)) {
++	MenuRegistry.appendMenuItem(MenuId.TerminalInstanceContext, {
++		command: {
++			id: TerminalLinksCommandId.OpenDetectedLink,
++			title: localize2('openDetectedLinkMenu', 'Open Detected Link...')
++		},
++		group: TerminalContextMenuGroup.Edit,
++		order: 4
++	});
++}
+ registerActiveInstanceAction({
+ 	id: TerminalLinksCommandId.OpenWebLink,
+ 	title: localize2('workbench.action.terminal.openLastUrlLink', 'Open Last URL Link'),
+--- a/lib/vscode/src/vs/workbench/contrib/terminalContrib/links/browser/terminalLinkManager.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminalContrib/links/browser/terminalLinkManager.ts
+@@ -3,7 +3,8 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
+-import { EventType } from '../../../../../base/browser/dom.js';
++import { EventType, getWindow } from '../../../../../base/browser/dom.js';
++import { isTouch } from '../../../../../base/browser/touchGate.js';
+ import { IMarkdownString, MarkdownString } from '../../../../../base/common/htmlContent.js';
+ import { DisposableStore, dispose, IDisposable, toDisposable } from '../../../../../base/common/lifecycle.js';
+ import { isMacintosh, OS } from '../../../../../base/common/platform.js';
+@@ -24,6 +25,7 @@ import { ITerminalConfigurationService, ITerminalExternalLinkProvider, TerminalL
+ import { ILinkHoverTargetOptions, TerminalHover } from '../../../terminal/browser/widgets/terminalHoverWidget.js';
+ import { TerminalWidgetManager } from '../../../terminal/browser/widgets/widgetManager.js';
+ import { IXtermCore } from '../../../terminal/browser/xterm-private.js';
++import { getBufferCellAt } from '../../../terminal/browser/xtermCell.js';
+ import { ITerminalCapabilityStore } from '../../../../../platform/terminal/common/capabilities/capabilities.js';
+ import { ITerminalConfiguration, ITerminalProcessInfo, TERMINAL_CONFIG_SECTION } from '../../../terminal/common/terminal.js';
+ import type { ILink, ILinkProvider, IViewportRange, Terminal } from '@xterm/xterm';
+@@ -252,6 +254,32 @@ export class TerminalLinkManager extends DisposableStore {
+ 		return links[0];
+ 	}
+ 
++	// Composery: touch link activation - a tap carries no modifier, so resolve the link
++	// covering the tapped cell and open it through the same modifier-exempt path as the
++	// link quick pick. Word links (workspace search) stay tap-inert on purpose: nearly
++	// every cell holds a word, and a tap must keep meaning "focus the terminal".
++	async openLinkAt(clientX: number, clientY: number): Promise<boolean> {
++		const cell = getBufferCellAt(this._xterm, clientX, clientY);
++		if (!cell) {
++			return false;
++		}
++		// Link ranges are 1-based in both axes; buffer cells are 0-based.
++		const x = cell.x + 1;
++		const y = cell.y + 1;
++		for (const type of ['url', 'localFile', 'localFolder'] as const) {
++			const links = await this._getLinksForType(y, type);
++			const link = links?.find(l =>
++				y >= l.range.start.y && y <= l.range.end.y &&
++				(y > l.range.start.y || x >= l.range.start.x) &&
++				(y < l.range.end.y || x <= l.range.end.x));
++			if (link) {
++				link.activate(new TerminalLinkQuickPickEvent(EventType.CLICK), link.text);
++				return true;
++			}
++		}
++		return false;
++	}
++
+ 	async getLinks(): Promise<{ viewport: IDetectedLinks; all: Promise<IDetectedLinks> }> {
+ 		// Fetch and await the viewport results
+ 		const viewportLinksByLinePromises: Promise<IDetectedLinks | undefined>[] = [];
+@@ -447,6 +475,11 @@ export class TerminalLinkManager extends DisposableStore {
+ 	}
+ 
+ 	protected _isLinkActivationModifierDown(event: MouseEvent): boolean {
++		// Composery: no modifier exists on a touch screen - any click that reaches a
++		// link there is deliberate.
++		if (isTouch(getWindow(this._xterm.element))) {
++			return true;
++		}
+ 		const editorConf = this._configurationService.getValue<{ multiCursorModifier: 'ctrlCmd' | 'alt' }>('editor');
+ 		if (editorConf.multiCursorModifier === 'ctrlCmd') {
+ 			return !!event.altKey;

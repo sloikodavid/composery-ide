@@ -1,0 +1,92 @@
+Content-stamped assets, because the fork pins the commit they were keyed by.
+
+code-server keys its static URLs by its repo commit (/stable-<commit>/static/...)
+and lets browsers cache them long-term, assuming that commit moves whenever the
+patches do. This fork pins it forever, so every release would ship different code
+under identical URLs and clients would keep stale caches. The build takes
+COMPOSERY_STATIC_STAMP - the content hash build.sh computes over patches,
+overlay, scripts and the shared identity constants - instead: same content, same
+URLs; any change, new URLs everywhere.
+
+The rest follows from the stamp being in the URL:
+- The served HTML is Cache-Control: no-store, because it embeds stamped URLs.
+- Service workers register with updateViaCache 'none'.
+- Each boot unregisters the webview service workers stranded under old stamps.
+  A VS Code webview is served its files by a worker registered below the stamped
+  static route, so every update leaves one behind and they accumulate in origin
+  storage nobody clears. Which scopes those are is staleWebviewWorkers.ts in the
+  overlay - the call here ends in unregister(), so what it reads as a stamp is
+  worth a test rather than a substring.
+
+--- a/ci/build/build-vscode.sh
++++ b/ci/build/build-vscode.sh
+@@ -47,7 +47,9 @@ main() {
+   # not update when only our patch files change, and that will cause caching
+   # issues where the browser keeps using outdated code.
+   export BUILD_SOURCEVERSION
+-  BUILD_SOURCEVERSION=$(git rev-parse HEAD)
++  # Composery: the fork pins this repo commit, so it no longer moves when patches change
++  # and would freeze the browser cache key; build.sh must export a content stamp instead.
++  BUILD_SOURCEVERSION=${COMPOSERY_STATIC_STAMP:?composery build.sh must export the static content stamp}
+ 
+   pushd lib/vscode
+ 
+--- a/lib/vscode/src/vs/server/node/webClientServer.ts
++++ b/lib/vscode/src/vs/server/node/webClientServer.ts
+@@ -486,6 +486,8 @@ export class WebClientServer {
+ 
+ 		const headers: http.OutgoingHttpHeaders = {
+ 			'Content-Type': 'text/html',
++			// Composery: the HTML embeds content-stamped asset URLs - never cache it itself.
++			'Cache-Control': 'no-store',
+ 			'Content-Security-Policy': cspDirectives
+ 		};
+ 		if (this._connectionToken.type !== ServerConnectionTokenType.None) {
+@@ -542,6 +544,8 @@ export class WebClientServer {
+ 
+ 		res.writeHead(200, {
+ 			'Content-Type': 'text/html',
++			// Composery: the HTML embeds content-stamped asset URLs - never cache it itself.
++			'Cache-Control': 'no-store',
+ 			'Content-Security-Policy': cspDirectives
+ 		});
+ 		return void res.end(data);
+--- a/lib/vscode/src/vs/workbench/browser/client.ts
++++ b/lib/vscode/src/vs/workbench/browser/client.ts
+@@ -7,6 +7,7 @@ import { INotificationService, Severity } from '../../platform/notification/comm
+ import { IProductService } from '../../platform/product/common/productService.js';
+ import { ICommandService } from '../../platform/commands/common/commands.js';
+ import { ServicesAccessor } from '../../platform/instantiation/common/instantiation.js';
++import { isStaleWebviewWorkerScope } from './staleWebviewWorkers.js';
+ 
+ export class CodeServerClient extends Disposable {
+ 	static LOGOUT_COMMAND_ID = 'code-server.logout';
+@@ -208,11 +209,28 @@ export class CodeServerClient extends Disposable {
+ 			try {
+ 				await navigator.serviceWorker.register(serviceWorker.path, {
+ 					scope: serviceWorker.scope,
++					updateViaCache: 'none',
+ 				});
+ 				this.logService.info('[Service Worker] registered');
+ 			} catch (error: any) {
+ 				this.logService.error('[Service Worker] registration', error as Error);
+ 			}
++			// Fire-and-forget: housekeeping must never gate workbench startup.
++			this.unregisterStaleWebviewWorkers().catch((error: any) => {
++				this.logService.error('[Service Worker] stale worker purge', error as Error);
++			});
++		}
++	}
++
++	// Only registrations: the resource cache is keyed by the service worker's own
++	// VERSION and its entries are vscode-resource URLs of workspace files, so no
++	// part of it moves with the stamp and there is nothing there to strand.
++	private async unregisterStaleWebviewWorkers() {
++		const stamp = this.productService.commit;
++		for (const registration of await navigator.serviceWorker.getRegistrations()) {
++			if (isStaleWebviewWorkerScope(registration.scope, stamp)) {
++				await registration.unregister();
++			}
+ 		}
+ 	}
+ }

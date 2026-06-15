@@ -1,0 +1,17 @@
+Load the shortcuts service bridge.
+
+The composery-shortcuts builtin needs workbench services with no public
+extension API equivalent. The bridge that exposes them is a whole file of ours
+(overlay, contrib/terminal/browser/shortcuts.contribution.ts), so all upstream
+owes it is this side-effect import - which is the entire patch.
+
+--- a/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminal.contribution.ts
++++ b/lib/vscode/src/vs/workbench/contrib/terminal/browser/terminal.contribution.ts
+@@ -28,6 +28,7 @@ import { terminalStrings } from '../common/terminalStrings.js';
+ import './media/terminal.css';
+ import './media/terminalVoice.css';
+ import './media/widgets.css';
++import './shortcuts.contribution.js';
+ import './media/xterm.css';
+ import { RemoteTerminalBackendContribution } from './remoteTerminalBackend.js';
+ import { ITerminalConfigurationService, ITerminalEditingService, ITerminalEditorService, ITerminalGroupService, ITerminalInstanceService, ITerminalService, TerminalDataTransfers, terminalEditorId } from './terminal.js';

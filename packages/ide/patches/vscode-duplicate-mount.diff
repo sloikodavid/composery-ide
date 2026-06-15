@@ -1,0 +1,26 @@
+Mount the workbench once.
+
+/vscode was a second mount of the same router, kept from when Coder v1's plugin
+system owned the root. That system was for internal use and has been removed,
+so the duplicate is a second URL for every page - a second origin for cookies
+and service workers to be scoped to, and a second set of content-stamped asset
+URLs to cache - with nothing behind it.
+
+--- a/src/node/routes/index.ts
++++ b/src/node/routes/index.ts
+@@ -224,13 +220,8 @@ export const register = async (
+     app.wsRouter.use(api.wsRouter.router)
+   }
+ 
+-  // For historic reasons we also load at /vscode because the root was replaced
+-  // by a plugin in v1 of Coder.  The plugin system (which was for internal use
+-  // only) has been removed, but leave the additional route for now.
+-  for (const routePrefix of ["/vscode", "/"]) {
+-    app.router.use(routePrefix, vscode.router)
+-    app.wsRouter.use(routePrefix, vscode.wsRouter.router)
+-  }
++  app.router.use("/", vscode.router)
++  app.wsRouter.use("/", vscode.wsRouter.router)
+ 
+   app.router.use(() => {
+     throw new HttpError("Not Found", HttpCode.NotFound)

@@ -1,0 +1,61 @@
+Home-menu entry for showing a QR of this instance's address, so a phone can open
+it without typing. Only the browser knows which of the server's addresses reached
+it, so the address is resolved here and handed to the composery-qr builtin
+extension, which owns the rendering.
+
+diff --git a/lib/vscode/src/vs/workbench/browser/client.ts b/lib/vscode/src/vs/workbench/browser/client.ts
+--- a/lib/vscode/src/vs/workbench/browser/client.ts
++++ b/lib/vscode/src/vs/workbench/browser/client.ts
+@@ -6,10 +6,13 @@
+ import { INotificationService, Severity } from '../../platform/notification/common/notification.js';
+ import { IProductService } from '../../platform/product/common/productService.js';
+ import { IStorageService, StorageScope, StorageTarget } from '../../platform/storage/common/storage.js';
++import { ICommandService } from '../../platform/commands/common/commands.js';
++import { ServicesAccessor } from '../../platform/instantiation/common/instantiation.js';
+
+ export class CodeServerClient extends Disposable {
+ 	static LOGOUT_COMMAND_ID = 'code-server.logout';
+ 	static CHANGE_PASSWORD_COMMAND_ID = 'composery.changePassword';
++	static SHOW_QR_COMMAND_ID = 'composery.qr.show';
+ 
+ 	constructor (
+ 		@ILogService private logService: ILogService,
+@@ -95,6 +98,8 @@
+ 			this.addChangePasswordCommand(this.productService.changePasswordEndpoint);
+ 		}
+ 
++		this.addShowQrCommand();
++
+ 		if (this.productService.serviceWorker) {
+ 			await this.registerServiceWorker(this.productService.serviceWorker);
+ 		}
+@@ -177,6 +182,29 @@
+ 			});
+ 		}
+ 	}
++
++	private addShowQrCommand() {
++		// This document's own address, not the embedding page's: reading across a
++		// cross-origin frame throws, and this runs during startup, where a throw
++		// costs the whole rest of it (the embedder's address is not this instance
++		// anyway). Whether another device can reach the address is the extension's
++		// call - it runs in node, so it can name this machine's addresses when not.
++		const instanceUrl = new URL(this.productService.rootEndpoint || '.', window.location.href).href;
++
++		this._register(CommandsRegistry.registerCommand(CodeServerClient.SHOW_QR_COMMAND_ID, (accessor: ServicesAccessor) => {
++			return accessor.get(ICommandService).executeCommand('composery.showQr', instanceUrl);
++		}));
++
++		for (const menuId of [MenuId.CommandPalette, MenuId.MenubarHomeMenu]) {
++			this._register(MenuRegistry.appendMenuItem(menuId, {
++				command: {
++					id: CodeServerClient.SHOW_QR_COMMAND_ID,
++					title: localize('showQr', "Show QR Code"),
++				},
++				order: menuId === MenuId.MenubarHomeMenu ? 0 : undefined,
++			}));
++		}
++	}
+ 
+ 	private addLogoutCommand(logoutEndpoint: string) {
+ 		CommandsRegistry.registerCommand(CodeServerClient.LOGOUT_COMMAND_ID, () => {

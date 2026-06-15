@@ -1,0 +1,98 @@
+The workbench page itself: what it links, what it declares, how it installs.
+
+- Overlay assets: narrow.css / touch.css / fonts.css, and shell.js.
+- The shared viewport contract (viewport-fit=cover,
+  interactive-widget=resizes-content) and a first-paint brand background, so the
+  page never flashes white before the theme applies.
+- The favicon set: sized ICO fallback first, adaptive SVG last, with favicon.js
+  swapping the scheme-pinned pair (Chromium rasterizes a favicon once per URL
+  and never re-runs its embedded media query). favicon.js is the one the auth
+  and error pages already load, from the same /_static path, not a second copy.
+- The installed app: standalone display, not fullscreen, so the clock and
+  battery stay visible; window-controls-overlay drops with it because our
+  titlebar reserves no titlebar-area-* room. Brand name (the
+  apple-mobile-web-app-title iOS actually shows), description and colours are
+  pinned to packages/shared by the "PWA install metadata" test. The manifest
+  carries one colour for the Android splash (the dark tile of the launcher
+  icon); theme-color metas then track the scheme per prefers-color-scheme.
+
+Two neighbouring pages are deliberately left alone: workbench-dev.html, served
+only when the environment is not a built one and so never by our release image;
+and callback.html, which has no input to keep clear of a keyboard and no
+safe-area padding, so viewport-fit=cover there would only move its text under
+the notch upstream's default keeps it out of.
+
+--- a/lib/vscode/src/vs/code/browser/workbench/workbench.html
++++ b/lib/vscode/src/vs/code/browser/workbench/workbench.html
+@@ -10,12 +10,15 @@
+ 		<!-- Mobile tweaks -->
+ 		<meta name="mobile-web-app-capable" content="yes" />
+ 		<meta name="apple-mobile-web-app-capable" content="yes" />
+-		<meta name="apple-mobile-web-app-title" content="Code">
++		<meta name="apple-mobile-web-app-title" content="Composery">
++		<!-- Status bar tint for an installed app. The manifest carries one colour for the splash; these track the scheme the workbench itself starts in (window.autoDetectColorScheme). -->
++		<meta name="theme-color" content="#efefef" media="(prefers-color-scheme: light)" />
++		<meta name="theme-color" content="#1c1c1c" media="(prefers-color-scheme: dark)" />
+ 		<link rel="apple-touch-icon" sizes="192x192" href="{{BASE}}/_static/src/browser/media/pwa-icon-192.png" />
+ 		<link rel="apple-touch-icon" sizes="512x512" href="{{BASE}}/_static/src/browser/media/pwa-icon-512.png" />
+ 
+ 		<!-- Disable pinch zooming -->
+-		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no">
++		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+ 
+ 		<!-- Workbench Configuration -->
+ 		<meta id="vscode-workbench-web-configuration" data-settings="{{WORKBENCH_WEB_CONFIGURATION}}">
+@@ -24,10 +27,18 @@
+ 		<meta id="vscode-workbench-auth-session" data-settings="{{WORKBENCH_AUTH_SESSION}}">
+ 
+ 		<!-- Workbench Icon/Manifest/CSS -->
+-		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon-dark-support.svg" />
+-		<link rel="alternate icon" href="{{BASE}}/_static/src/browser/media/favicon.ico" type="image/x-icon" />
++		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon.ico" type="image/x-icon" sizes="32x32" />
++		<link rel="icon" href="{{BASE}}/_static/src/browser/media/favicon.svg" type="image/svg+xml" sizes="any" data-light="{{BASE}}/_static/src/browser/media/favicon-light.svg" data-dark="{{BASE}}/_static/src/browser/media/favicon-dark.svg" />
+ 		<link rel="manifest" href="{{VS_BASE}}/manifest.json" crossorigin="use-credentials" />
+ 		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench.css">
++		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/media/narrow.css">
++		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/media/touch.css">
++		<link rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/media/fonts.css">
++		<!-- First paint: paint the brand background so the workbench never flashes white before its theme applies. Colours are the brand light/dark backgrounds. -->
++		<style>
++			html, body { background-color: #f6f6f6; }
++			@media (prefers-color-scheme: dark) { html, body { background-color: #171717; } }
++		</style>
+ 
+ 	</head>
+ 
+@@ -46,5 +60,7 @@
+ 	<script type="module" src="{{WORKBENCH_NLS_FALLBACK_URL}}"></script>
+ 	<!-- attempt to load NLS messages in case non-english -->
+ 	<script type="module" src="{{WORKBENCH_NLS_URL}}"></script>
++	<script type="module" src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/shell.js"></script>
++	<script src="{{BASE}}/_static/src/browser/pages/favicon.js"></script>
+ 	<script type="module" src="{{WORKBENCH_WEB_BASE_URL}}/out/vs/code/browser/workbench/workbench.js"></script>
+ </html>
+--- a/src/node/routes/vscode.ts
++++ b/src/node/routes/vscode.ts
+@@ -196,9 +196,19 @@ router.get("/manifest.json", async (req, res) => {
+           name: req.args["app-name"],
+           short_name: req.args["app-name"],
+           start_url: ".",
+-          display: "fullscreen",
+-          display_override: ["window-controls-overlay"],
+-          description: "Run Code on a remote server.",
++          // standalone, not fullscreen: an installed editor keeps the clock and
++          // battery visible like every other app. display_override is dropped
++          // with it - window-controls-overlay would let the OS controls sit on
++          // top of our own titlebar, which does not reserve titlebar-area-*.
++          display: "standalone",
++          description:
++            "Composery is an always-on cloud IDE: VS Code in the browser or on your phone, self-hosted on your own server or managed in Composery Cloud, and made for long-running AI agents.",
++          // Brand dark background, matching the maskable launcher icon's tile, so
++          // the Android splash and status bar are continuous with the icon the
++          // user just tapped. A manifest carries one value; the workbench's
++          // theme-color meta corrects the status bar per scheme once it paints.
++          theme_color: "#1c1c1c",
++          background_color: "#171717",
+           icons: [192, 512]
+             .map((size) => [
+               {

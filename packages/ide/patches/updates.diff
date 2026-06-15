@@ -1,0 +1,407 @@
+Composery updates own the whole update surface
+
+Composery has exactly one update mechanism: the composery-updates builtin
+extension (keyed on COMPOSERY_BUILD_VERSION, compared against
+COMPOSERY_BUILD_SOURCE's GitHub releases on a self-hosted instance and against
+the website's fleet release on a cloud instance; automatic on startup and manual via
+the composery.checkForUpdates command). This patch owns everything around that:
+
+- adds the File-menu "Check for Updates" item that fires the extension command
+  (client.ts, MenubarHomeMenu).
+- removes code-server's own update notifier remnants so no second mechanism
+  survives: the client checkUpdates loop + its storage plumbing (client.ts),
+  the updateEndpoint product field emission (webClientServer.ts) and its
+  interface field (product.ts), the disable-update-check server arg
+  (serverEnvironmentService.ts), plus the server side: the /update route and
+  UpdateProvider (patch-deleted files) and the disable-update-check CLI flag.
+
+--- a/lib/vscode/src/vs/workbench/browser/client.ts
++++ b/lib/vscode/src/vs/workbench/browser/client.ts
+@@ -5,7 +5,6 @@ import { CommandsRegistry } from '../../platform/commands/common/commands.js';
+ import { ILogService } from '../../platform/log/common/log.js';
+ import { INotificationService, Severity } from '../../platform/notification/common/notification.js';
+ import { IProductService } from '../../platform/product/common/productService.js';
+-import { IStorageService, StorageScope, StorageTarget } from '../../platform/storage/common/storage.js';
+ import { ICommandService } from '../../platform/commands/common/commands.js';
+ import { ServicesAccessor } from '../../platform/instantiation/common/instantiation.js';
+ 
+@@ -18,7 +17,6 @@ export class CodeServerClient extends Disposable {
+ 		@ILogService private logService: ILogService,
+ 		@INotificationService private notificationService: INotificationService,
+ 		@IProductService private productService: IProductService,
+-		@IStorageService private storageService: IStorageService,
+ 	) {
+ 		super();
+ 	}
+@@ -90,9 +88,9 @@ export class CodeServerClient extends Disposable {
+ 			});
+ 		}
+ 
+-		if (this.productService.updateEndpoint) {
+-			this.checkUpdates(this.productService.updateEndpoint)
+-		}
++		// Composery: update notifications are handled by the composery-updates
++		// builtin extension (status-bar item + branded release notification), so the
++		// upstream release notifier is intentionally not run here.
+ 
+ 		if (this.productService.logoutEndpoint) {
+ 			this.addLogoutCommand(this.productService.logoutEndpoint);
+@@ -102,6 +100,14 @@ export class CodeServerClient extends Disposable {
+ 			this.addChangePasswordCommand(this.productService.changePasswordEndpoint);
+ 		}
+ 
++		MenuRegistry.appendMenuItem(MenuId.MenubarHomeMenu, {
++			command: {
++				id: 'composery.checkForUpdates',
++				title: localize('checkForUpdates', "Check for Updates"),
++			},
++			order: -2,
++		});
++
+ 		// Composery: the command is implemented by the composery-api builtin extension.
+ 		MenuRegistry.appendMenuItem(MenuId.MenubarHomeMenu, {
+ 			command: {
+@@ -117,56 +123,6 @@ export class CodeServerClient extends Disposable {
+ 		}
+ 	}
+ 
+-	private checkUpdates(updateEndpoint: string) {
+-		const getUpdate = async (updateCheckEndpoint: string): Promise<void> => {
+-			this.logService.debug('Checking for update...');
+-
+-			const response = await fetch(updateCheckEndpoint, {
+-				headers: { Accept: 'application/json' },
+-			});
+-			if (!response.ok) {
+-				throw new Error(response.statusText);
+-			}
+-			const json = await response.json();
+-			if (json.error) {
+-				throw new Error(json.error);
+-			}
+-			if (json.isLatest) {
+-				return;
+-			}
+-
+-			const lastNoti = this.storageService.getNumber('csLastUpdateNotification', StorageScope.APPLICATION);
+-			if (lastNoti) {
+-				// Only remind them again after 1 week.
+-				const timeout = 1000 * 60 * 60 * 24 * 7;
+-				const threshold = lastNoti + timeout;
+-				if (Date.now() < threshold) {
+-					return;
+-				}
+-			}
+-
+-			this.storageService.store('csLastUpdateNotification', Date.now(), StorageScope.APPLICATION, StorageTarget.MACHINE);
+-
+-			this.notificationService.notify({
+-				severity: Severity.Info,
+-				message: `[code-server v${json.latest}](https://github.com/cdr/code-server/releases/tag/v${json.latest}) has been released!`,
+-			});
+-		};
+-
+-		const updateLoop = (): void => {
+-			getUpdate(updateEndpoint)
+-				.catch(error => {
+-					this.logService.debug(`failed to check for update: ${error}`);
+-				})
+-				.finally(() => {
+-					// Check again every 6 hours.
+-					setTimeout(updateLoop, 1000 * 60 * 60 * 6);
+-				});
+-		};
+-
+-		updateLoop();
+-	}
+-
+ 	private openAuthEndpoint(endpoint: string) {
+ 		const targetWindow = window.top || window;
+ 		const authUrl = new URL(endpoint, targetWindow.location.href);
+diff --git a/lib/vscode/src/vs/base/common/product.ts b/lib/vscode/src/vs/base/common/product.ts
+--- a/lib/vscode/src/vs/base/common/product.ts
++++ b/lib/vscode/src/vs/base/common/product.ts
+@@ -86,7 +86,6 @@
+ export interface IProductConfiguration {
+ 	readonly codeServerVersion?: string
+ 	readonly rootEndpoint?: string
+-	readonly updateEndpoint?: string
+ 	readonly logoutEndpoint?: string
+ 	readonly changePasswordEndpoint?: string
+ 	readonly proxyEndpointTemplate?: string
+diff --git a/lib/vscode/src/vs/server/node/serverEnvironmentService.ts b/lib/vscode/src/vs/server/node/serverEnvironmentService.ts
+--- a/lib/vscode/src/vs/server/node/serverEnvironmentService.ts
++++ b/lib/vscode/src/vs/server/node/serverEnvironmentService.ts
+@@ -17,7 +17,6 @@
+ 
+ export const serverOptions: OptionDescriptions<Required<ServerParsedArgs>> = {
+ 	/* ----- code-server ----- */
+-	'disable-update-check': { type: 'boolean' },
+ 	'auth': { type: 'string' },
+ 	'change-password': { type: 'boolean' },
+ 	'disable-file-downloads': { type: 'boolean' },
+@@ -119,7 +118,6 @@
+ 
+ export interface ServerParsedArgs {
+ 	/* ----- code-server ----- */
+-	'disable-update-check'?: boolean;
+ 	'auth'?: string;
+ 	'change-password'?: boolean;
+ 	'disable-file-downloads'?: boolean;
+diff --git a/lib/vscode/src/vs/server/node/webClientServer.ts b/lib/vscode/src/vs/server/node/webClientServer.ts
+--- a/lib/vscode/src/vs/server/node/webClientServer.ts
++++ b/lib/vscode/src/vs/server/node/webClientServer.ts
+@@ -372,7 +372,6 @@
+ 			nameShort: appName,
+ 			nameLong: appName,
+ 			rootEndpoint: rootBase,
+-			updateEndpoint: !this._environmentService.args['disable-update-check'] ? rootBase + '/update/check' : undefined,
+ 			logoutEndpoint: this._environmentService.args['auth'] && this._environmentService.args['auth'] !== "none" ? rootBase + '/logout' : undefined,
+ 			changePasswordEndpoint: this._environmentService.args['change-password'] ? rootBase + '/change-password' : undefined,
+ 			proxyEndpointTemplate: process.env.VSCODE_PROXY_URI ?? rootBase + '/proxy/{{port}}/',
+diff --git a/src/node/cli.ts b/src/node/cli.ts
+--- a/src/node/cli.ts
++++ b/src/node/cli.ts
+@@ -46,7 +46,6 @@
+   "show-versions"?: boolean
+   category?: string
+   "github-auth"?: string
+-  "disable-update-check"?: boolean
+   "disable-file-downloads"?: boolean
+   "disable-file-uploads"?: boolean
+   "disable-workspace-trust"?: boolean
+@@ -165,12 +164,6 @@
+   },
+   "cert-key": { type: "string", path: true, description: "Path to certificate key when using non-generated cert." },
+   "disable-telemetry": { type: "boolean", description: "Disable telemetry." },
+-  "disable-update-check": {
+-    type: "boolean",
+-    description:
+-      "Disable update check. Without this flag, code-server checks every 6 hours against the latest github release and \n" +
+-      "then notifies you once every week that a new release is available.",
+-  },
+   "session-socket": {
+     type: "string",
+   },
+diff --git a/src/node/http.ts b/src/node/http.ts
+--- a/src/node/http.ts
++++ b/src/node/http.ts
+@@ -10,7 +10,6 @@
+ import { version as codeServerVersion } from "./constants"
+ import { Heart } from "./heart"
+ import { CoderSettings, SettingsProvider } from "./settings"
+-import { UpdateProvider } from "./update"
+ import {
+   getPasswordMethod,
+   IsCookieValidArgs,
+@@ -39,7 +38,6 @@
+       args: DefaultedArgs
+       heart: Heart
+       settings: SettingsProvider<CoderSettings>
+-      updater: UpdateProvider
+       cookieSessionName: string
+     }
+   }
+diff --git a/src/node/routes/index.ts b/src/node/routes/index.ts
+--- a/src/node/routes/index.ts
++++ b/src/node/routes/index.ts
+@@ -14,7 +14,6 @@
+ import { checkPersistenceReadiness, renderStartupPage } from "../persistence/readiness"
+ import { redirect } from "../http"
+ import { CoderSettings, SettingsProvider } from "../settings"
+-import { UpdateProvider } from "../update"
+ import { getMediaMime, paths } from "../util"
+ import type { WebsocketRequest } from "../wsRouter"
+ import * as domainProxy from "./domainProxy"
+@@ -26,7 +25,6 @@
+ import * as changePasswordRoute from "./changePassword"
+ import * as cloudAuthRoute from "./cloudAuth"
+ import * as pathProxy from "./pathProxy"
+-import * as update from "./update"
+ import * as api from "./api"
+ import * as vscode from "./vscode"
+ 
+@@ -64,7 +62,6 @@
+   app.wsRouter.use(cookieParser())
+ 
+   const settings = new SettingsProvider<CoderSettings>(path.join(args["user-data-dir"], "coder.json"))
+-  const updater = new UpdateProvider("https://api.github.com/repos/coder/code-server/releases/latest", settings)
+ 
+   const cookieSessionName = getCookieSessionName(args["cookie-suffix"])
+ 
+@@ -81,7 +78,6 @@
+     req.args = args
+     req.heart = heart
+     req.settings = settings
+-    req.updater = updater
+     req.cookieSessionName = cookieSessionName
+ 
+     next()
+@@ -217,7 +213,6 @@
+     app.router.all("/logout", (req, res) => redirect(req, res, "/", {}))
+   }
+ 
+-  app.router.use("/update", update.router)
+ 
+   // The Composery automation API (/_composery/api/v1/...). API-key auth, served
+   // in-process on the single port. Mounted before the VS Code catch-all so it is
+diff --git a/src/node/routes/update.ts b/src/node/routes/update.ts
+--- a/src/node/routes/update.ts
++++ /dev/null
+@@ -1,15 +0,0 @@
+-import { Router } from "express"
+-import { version } from "../constants"
+-import { ensureAuthenticated } from "../http"
+-
+-export const router = Router()
+-
+-router.get("/check", ensureAuthenticated, async (req, res) => {
+-  const update = await req.updater.getUpdate(req.query.force === "true")
+-  res.json({
+-    checked: update.checked,
+-    latest: update.version,
+-    current: version,
+-    isLatest: req.updater.isLatestVersion(update),
+-  })
+-})
+diff --git a/src/node/update.ts b/src/node/update.ts
+--- a/src/node/update.ts
++++ /dev/null
+@@ -1,137 +0,0 @@
+-import { field, logger } from "@coder/logger"
+-import * as http from "http"
+-import * as https from "https"
+-import { ProxyAgent } from "proxy-agent"
+-import * as semver from "semver"
+-import * as url from "url"
+-import { httpProxyUri, version } from "./constants"
+-import { SettingsProvider, UpdateSettings } from "./settings"
+-
+-export interface Update {
+-  checked: number
+-  version: string
+-}
+-
+-export interface LatestResponse {
+-  name: string
+-}
+-
+-/**
+- * Provide update information.
+- */
+-export class UpdateProvider {
+-  private update?: Promise<Update>
+-  private updateInterval = 1000 * 60 * 60 * 24 // Milliseconds between update checks.
+-
+-  public constructor(
+-    /**
+-     * The URL for getting the latest version of code-server. Should return JSON
+-     * that fulfills `LatestResponse`.
+-     */
+-    private readonly latestUrl: string,
+-    /**
+-     * Update information will be stored here.
+-     */
+-    private readonly settings: SettingsProvider<UpdateSettings>,
+-  ) {}
+-
+-  /**
+-   * Query for and return the latest update.
+-   */
+-  public async getUpdate(force?: boolean): Promise<Update> {
+-    // Don't run multiple requests at a time.
+-    if (!this.update) {
+-      this.update = this._getUpdate(force)
+-      this.update.then(() => (this.update = undefined))
+-    }
+-
+-    return this.update
+-  }
+-
+-  private async _getUpdate(force?: boolean): Promise<Update> {
+-    const now = Date.now()
+-    try {
+-      let { update } = !force ? await this.settings.read() : { update: undefined }
+-      if (!update || update.checked + this.updateInterval < now) {
+-        const buffer = await this.request(this.latestUrl)
+-        const data = JSON.parse(buffer.toString()) as LatestResponse
+-        update = { checked: now, version: data.name.replace(/^v/, "") }
+-        await this.settings.write({ update })
+-      }
+-      logger.debug("got latest version", field("latest", update.version))
+-      return update
+-    } catch (error: any) {
+-      logger.error("Failed to get latest version", field("error", error.message))
+-      return {
+-        checked: now,
+-        version: "unknown",
+-      }
+-    }
+-  }
+-
+-  /**
+-   * Return true if the currently installed version is the latest.
+-   */
+-  public isLatestVersion(latest: Update): boolean {
+-    logger.debug("comparing versions", field("current", version), field("latest", latest.version))
+-    try {
+-      return semver.lte(latest.version, version)
+-    } catch (error) {
+-      return true
+-    }
+-  }
+-
+-  private async request(uri: string): Promise<Buffer> {
+-    const response = await this.requestResponse(uri)
+-    return new Promise((resolve, reject) => {
+-      const chunks: Buffer[] = []
+-      let bufferLength = 0
+-      response.on("data", (chunk) => {
+-        bufferLength += chunk.length
+-        chunks.push(chunk)
+-      })
+-      response.on("error", reject)
+-      response.on("end", () => {
+-        resolve(Buffer.concat(chunks, bufferLength))
+-      })
+-    })
+-  }
+-
+-  private async requestResponse(uri: string): Promise<http.IncomingMessage> {
+-    let redirects = 0
+-    const maxRedirects = 10
+-    return new Promise((resolve, reject) => {
+-      const request = (uri: string): void => {
+-        logger.debug("Making request", field("uri", uri))
+-        const isHttps = uri.startsWith("https")
+-        const agent = new ProxyAgent({
+-          keepAlive: true,
+-          getProxyForUrl: () => httpProxyUri || "",
+-        })
+-        const httpx = isHttps ? https : http
+-        const client = httpx.get(uri, { headers: { "User-Agent": "code-server" }, agent }, (response) => {
+-          if (!response.statusCode || response.statusCode < 200 || response.statusCode >= 400) {
+-            response.destroy()
+-            return reject(new Error(`${uri}: ${response.statusCode || "500"}`))
+-          }
+-
+-          if (response.statusCode >= 300) {
+-            response.destroy()
+-            ++redirects
+-            if (redirects > maxRedirects) {
+-              return reject(new Error("reached max redirects"))
+-            }
+-            if (!response.headers.location) {
+-              return reject(new Error("received redirect with no location header"))
+-            }
+-            return request(url.resolve(uri, response.headers.location))
+-          }
+-
+-          resolve(response)
+-        })
+-        client.on("error", reject)
+-      }
+-      request(uri)
+-    })
+-  }
+-}

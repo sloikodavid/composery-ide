@@ -1,0 +1,153 @@
+Guard callback links that target loopback: in a remote workspace, a link whose
+callback/redirect parameter points at localhost completes on the wrong machine
+- the browser is not the host that owns the port. Which links those are is
+loopbackCallback.ts in the overlay, where the spellings it has to recognise
+(every name the parameter travels under, hash-queries, IPv4-mapped IPv6, up to
+two levels of nesting) can be run by a test instead of read off a diff. One
+concern, two halves:
+
+- trustedDomainsValidator: warn before opening, offering Copy as the way to
+  carry the link to the right machine. The check runs before the trusted-
+  workspace bypass: workspace trust says nothing about where a redirect lands.
+- markdown preview: absolute http(s) links otherwise navigate inside the
+  preview webview and bypass the workbench opener entirely; route them through
+  the existing openLink message so the guard above sees them (and tolerate
+  resolveDocumentLink returning undefined for links it cannot resolve).
+
+--- a/lib/vscode/extensions/markdown-language-features/preview-src/index.ts
++++ b/lib/vscode/extensions/markdown-language-features/preview-src/index.ts
+@@ -669,7 +669,14 @@ document.addEventListener('click', event => {
+ 			let hrefText = node.getAttribute('data-href');
+ 			if (!hrefText) {
+ 				hrefText = node.getAttribute('href');
+-				// Pass through known schemes
++				if (hrefText && /^(?:https?):/i.test(hrefText)) {
++					messaging.postMessage('openLink', { href: hrefText });
++					event.preventDefault();
++					event.stopPropagation();
++					return;
++				}
++
++				// Schemes that do not need workbench validation retain their native behavior.
+ 				if (hrefText && passThroughLinkSchemes.some(scheme => hrefText!.startsWith(scheme))) {
+ 					return;
+ 				}
+--- a/lib/vscode/extensions/markdown-language-features/src/preview/preview.ts
++++ b/lib/vscode/extensions/markdown-language-features/src/preview/preview.ts
+@@ -484,7 +484,7 @@ class MarkdownPreview extends Disposable implements WebviewResourceProvider {
+ 		const openLinks = config.get<string>('preview.openMarkdownLinks', 'inPreview');
+ 		if (openLinks === 'inPreview') {
+ 			const resolved = await this.#opener.resolveDocumentLink(href, this.resource);
+-			if (resolved.kind === 'file') {
++			if (resolved?.kind === 'file') {
+ 				try {
+ 					const doc = await vscode.workspace.openTextDocument(vscode.Uri.from(resolved.uri));
+ 					if (isMarkdownFile(doc)) {
+--- a/lib/vscode/src/vs/workbench/contrib/url/browser/trustedDomainsValidator.ts
++++ b/lib/vscode/src/vs/workbench/contrib/url/browser/trustedDomainsValidator.ts
+@@ -3,6 +3,7 @@
+  *  Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
++import { DeferredPromise } from '../../../../base/common/async.js';
+ import { Schemas, matchesScheme } from '../../../../base/common/network.js';
+ import Severity from '../../../../base/common/severity.js';
+ import { URI } from '../../../../base/common/uri.js';
+@@ -11,6 +12,7 @@ import { IClipboardService } from '../../../../platform/clipboard/common/clipboa
+ import { IConfigurationService } from '../../../../platform/configuration/common/configuration.js';
+ import { IDialogService } from '../../../../platform/dialogs/common/dialogs.js';
+ import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
++import { INotificationService } from '../../../../platform/notification/common/notification.js';
+ import { IOpenerService, OpenOptions } from '../../../../platform/opener/common/opener.js';
+ import { IProductService } from '../../../../platform/product/common/productService.js';
+ import { IQuickInputService } from '../../../../platform/quickinput/common/quickInput.js';
+@@ -22,6 +24,7 @@ import { ITrustedDomainService } from './trustedDomainService.js';
+ import { isURLDomainTrusted } from '../../../../platform/url/common/trustedDomains.js';
+ import { configureOpenerTrustedDomainsHandler, readStaticTrustedDomains } from './trustedDomains.js';
+ import { IEditorService } from '../../../services/editor/common/editorService.js';
++import { findLoopbackCallbackTarget } from './loopbackCallback.js';
+ 
+ export class OpenerValidatorContributions implements IWorkbenchContribution {
+ 
+@@ -33,6 +36,7 @@ export class OpenerValidatorContributions implements IWorkbenchContribution {
+ 		@IQuickInputService private readonly _quickInputService: IQuickInputService,
+ 		@IEditorService private readonly _editorService: IEditorService,
+ 		@IClipboardService private readonly _clipboardService: IClipboardService,
++		@INotificationService private readonly _notificationService: INotificationService,
+ 		@ITelemetryService private readonly _telemetryService: ITelemetryService,
+ 		@IInstantiationService private readonly _instantiationService: IInstantiationService,
+ 		@IConfigurationService private readonly _configurationService: IConfigurationService,
+@@ -47,10 +51,6 @@ export class OpenerValidatorContributions implements IWorkbenchContribution {
+ 			return true;
+ 		}
+ 
+-		if (openOptions?.fromWorkspace && this._workspaceTrustService.isWorkspaceTrusted() && !this._configurationService.getValue('workbench.trustedDomains.promptInTrustedWorkspace')) {
+-			return true;
+-		}
+-
+ 		const originalResource = resource;
+ 		let resourceUri: URI;
+ 		if (typeof resource === 'string') {
+@@ -59,6 +59,18 @@ export class OpenerValidatorContributions implements IWorkbenchContribution {
+ 			resourceUri = resource;
+ 		}
+ 
++		const loopbackCallbackTarget = findLoopbackCallbackTarget(resourceUri.toString(true));
++		if (loopbackCallbackTarget) {
++			return this.promptForLoopbackCallbackLink(
++				typeof originalResource === 'string' ? originalResource : resourceUri.toString(true),
++				loopbackCallbackTarget.origin,
++			);
++		}
++
++		if (openOptions?.fromWorkspace && this._workspaceTrustService.isWorkspaceTrusted() && !this._configurationService.getValue('workbench.trustedDomains.promptInTrustedWorkspace')) {
++			return true;
++		}
++
+ 		if (this._trustedDomainService.isValid(resourceUri)) {
+ 			return true;
+ 		} else {
+@@ -133,4 +145,43 @@ export class OpenerValidatorContributions implements IWorkbenchContribution {
+ 			return result;
+ 		}
+ 	}
++
++	private async promptForLoopbackCallbackLink(link: string, loopbackOrigin: string): Promise<boolean> {
++		const decision = new DeferredPromise<boolean>();
++		let shouldOpen = false;
++		const handle = this._notificationService.prompt(
++			Severity.Warning,
++			localize(
++				'loopbackCallbackGuard',
++				"This link redirects to {0}. Because this is a remote workspace, the redirect may not reach it.",
++				loopbackOrigin,
++			),
++			[
++				{
++					label: localize('openAnyway', 'Open Anyway'),
++					run: () => {
++						shouldOpen = true;
++					}
++				},
++				{
++					label: localize('copy', 'Copy'),
++					run: () => {
++						void this._clipboardService.writeText(link);
++						shouldOpen = false;
++					}
++				}
++			],
++			{
++				sticky: true,
++				onCancel: () => {
++					shouldOpen = false;
++				}
++			},
++		);
++		const onCloseListener = handle.onDidClose(() => {
++			decision.complete(shouldOpen);
++			onCloseListener.dispose();
++		});
++		return decision.p;
++	}
+ }

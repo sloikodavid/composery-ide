@@ -1,0 +1,30 @@
+Force the textarea input path on Android: Chromium EditContext drops IME
+selection deletes (Gboard backspace over a selection arrives as a textupdate
+that nativeEditContext#_emitTypeEvent maps to type(''), a no-op). See
+microsoft/vscode#202787.
+
+2026-07-22 re-check (prune pass): mechanism re-verified on device - without this
+patch the Android editor activates NativeEditContext (a native-edit-context DIV);
+with it the textarea path is used. The behavioural repro was inconclusive on
+Chrome 134: a selected word becomes a Gboard composing region, so its backspace
+removes one character rather than exercising the selection-replace no-op. This is
+a browser-version-dependent Chromium defect and current Chromium (151/152) will
+not run under the x86_64 emulator's ARM translation, so kept. Retest the Gboard
+backspace-over-selection on a physical device with current Chrome before deleting.
+
+diff --git a/lib/vscode/src/vs/editor/browser/config/editorConfiguration.ts b/lib/vscode/src/vs/editor/browser/config/editorConfiguration.ts
+--- a/lib/vscode/src/vs/editor/browser/config/editorConfiguration.ts
++++ b/lib/vscode/src/vs/editor/browser/config/editorConfiguration.ts
+@@ -144,8 +144,11 @@
+ 			outerHeight: this._containerObserver.getHeight(),
+ 			emptySelectionClipboard: browser.isWebKit || browser.isFirefox,
+ 			pixelRatio: PixelRatio.getInstance(getWindowById(this._targetWindowId, true).window).value,
++			// Android IMEs delete a non-empty selection via a textupdate that
++			// nativeEditContext maps to a no-op type(''), so backspace over a
++			// selection is silently dropped; the textarea path handles it.
+ 			// eslint-disable-next-line local/code-no-any-casts, @typescript-eslint/no-explicit-any
+-			editContextSupported: typeof (globalThis as any).EditContext === 'function',
++			editContextSupported: typeof (globalThis as any).EditContext === 'function' && !browser.isAndroid,
+ 			accessibilitySupport: (
+ 				this._accessibilityService.isScreenReaderOptimized()
+ 					? AccessibilitySupport.Enabled

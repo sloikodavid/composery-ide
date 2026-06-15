@@ -1,0 +1,862 @@
+Composery product identity: what the assembled IDE calls itself and shows.
+
+- product.json coordinates: documentation and newsletter URLs, the trusted
+  domain, the server data folder.
+- The brand icon wherever upstream draws its own: the letterpress backgrounds
+  (editor and sessions, light/dark/high-contrast) and the window icon.
+- The titlebar home button and its context menu.
+- Composery Dark / Composery Light as the default colour themes, including
+  upstream's synchronous first-paint snapshot retinted from the
+  composery-themes values. The "default color theme" test fails if that
+  snapshot drifts from the theme JSONs, because nothing else would notice a
+  first paint in the wrong colours.
+
+Renames are deliberately absent: rebrand.mjs owns every code-server -> Composery
+substitution on the assembled tree, so this patch carries only what a rename
+rule cannot express.
+
+--- a/ci/build/build-vscode.sh
++++ b/ci/build/build-vscode.sh
+@@ -76,6 +76,7 @@ main() {
+     "nameLong": "code-server",
+     "applicationName": "code-server",
+     "dataFolderName": ".code-server",
++    "serverDataFolderName": ".composery-server",
+     "win32MutexName": "codeserver",
+     "licenseUrl": "https://github.com/coder/code-server/blob/main/LICENSE",
+     "win32DirName": "code-server",
+@@ -85,15 +86,16 @@ main() {
+     "darwinBundleIdentifier": "com.coder.code.server",
+     "linuxIconName": "com.coder.code.server",
+     "reportIssueUrl": "https://github.com/coder/code-server/issues/new",
+-    "documentationUrl": "https://go.microsoft.com/fwlink/?LinkID=533484#vscode",
++    "documentationUrl": "https://www.composery.io/docs",
+     "keyboardShortcutsUrlMac": "https://go.microsoft.com/fwlink/?linkid=832143",
+     "keyboardShortcutsUrlLinux": "https://go.microsoft.com/fwlink/?linkid=832144",
+     "keyboardShortcutsUrlWin": "https://go.microsoft.com/fwlink/?linkid=832145",
+-    "introductoryVideosUrl": "https://go.microsoft.com/fwlink/?linkid=832146",
+-    "tipsAndTricksUrl": "https://go.microsoft.com/fwlink/?linkid=852118",
+-    "newsletterSignupUrl": "https://www.research.net/r/vsc-newsletter",
++    "introductoryVideosUrl": "https://www.composery.io/docs",
++    "tipsAndTricksUrl": "https://www.composery.io/docs",
++    "newsletterSignupUrl": "https://www.composery.io",
+     "linkProtectionTrustedDomains": [
+-      "https://open-vsx.org"
++      "https://open-vsx.org",
++      "https://www.composery.io"
+     ],
+     "trustedExtensionAuthAccess": [
+       "vscode.git", "vscode.github",
+--- a/lib/vscode/src/vs/sessions/contrib/chat/browser/media/letterpress-sessions-dark.svg
++++ b/lib/vscode/src/vs/sessions/contrib/chat/browser/media/letterpress-sessions-dark.svg
+@@ -1,6 +1,8 @@
+-<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+-<path d="M6 93.2529V37.8398H10C10 40.8834 11.5856 43.6395 14.084 45.1855L14.3291 45.332L14.333 45.334L60.667 72.0713V116.347C60.6669 118.957 59.2702 121.374 57.0039 122.689C54.7312 124.009 51.9403 124.01 49.667 122.692L9.66699 99.5986L9.45215 99.4697C7.30992 98.1291 6 95.7813 6 93.2529ZM10 93.2529C10 94.4295 10.6306 95.5326 11.6709 96.1367L51.667 119.228L51.6709 119.23C52.7033 119.83 53.9637 119.83 54.9961 119.23C56.0363 118.626 56.6669 117.523 56.667 116.347V74.3818L12.334 48.7988C11.4848 48.3111 10.703 47.7295 10 47.0713V93.2529Z" fill="#3C3C3C"/>
+-<path d="M56.667 11.6533C56.6669 10.4769 56.0363 9.37358 54.9961 8.76956C53.9638 8.17014 52.7032 8.17019 51.6709 8.76956L51.666 8.77248L14.333 30.3194C11.6446 31.8825 10.0002 34.7424 10 37.8399C10 40.8835 11.5854 43.6405 14.084 45.1865L14.3291 45.3321L14.333 45.335L56.667 69.7637V11.6533ZM60.667 76.6905L12.3379 48.8008C8.47075 46.5817 6 42.4312 6 37.8399C6.00017 33.3128 8.40716 29.1347 12.3291 26.8574L12.334 26.8545L49.6621 5.31155C51.9363 3.99105 54.7297 3.99021 57.0039 5.31057C59.2701 6.62645 60.6669 9.04345 60.667 11.6533V76.6905Z" fill="#3C3C3C"/>
+-<path d="M67.3334 11.6533C67.3335 9.0435 68.7293 6.62647 70.9955 5.31057C73.2697 3.99008 76.063 3.99021 78.3373 5.31057L78.3363 5.31155L118.333 28.4014L118.337 28.4043C120.604 29.7203 122 32.1371 122 34.7471V90.1602H118C118 87.0185 116.31 84.1823 113.671 82.668L113.666 82.6651L67.3334 55.9014V11.6533ZM71.3334 53.5928L115.662 79.1992L116.021 79.4121C116.734 79.8534 117.396 80.3622 118 80.9278V34.7471C118 33.5706 117.37 32.4674 116.329 31.8633L76.3334 8.77248L76.3295 8.76956C75.2971 8.17014 74.0366 8.17019 73.0043 8.76956C71.964 9.37357 71.3335 10.4768 71.3334 11.6533V53.5928Z" fill="#3C3C3C"/>
+-<path d="M118 90.1599C118 87.0182 116.31 84.1829 113.671 82.6686L113.666 82.6657L71.3334 58.2106V116.346C71.3334 117.523 71.964 118.626 73.0043 119.23C74.0366 119.83 75.2971 119.83 76.3295 119.23L76.3334 119.228L113.667 97.6813C116.361 96.1153 118 93.3052 118 90.1599ZM122 90.1599C122 94.7459 119.588 98.8687 115.671 101.143L115.666 101.145L78.3363 122.689L78.3373 122.69C76.0631 124.01 73.2696 124.011 70.9955 122.69C68.7292 121.374 67.3334 118.956 67.3334 116.346V51.2819L115.662 79.1989L116.021 79.4128C119.682 81.678 122 85.7121 122 90.1599Z" fill="#3C3C3C"/>
++<svg width="260" height="260" viewBox="0 0 20 20" opacity="0.12" xmlns="http://www.w3.org/2000/svg">
++  <g transform="translate(-0.7005 -0.7005) scale(1.13527) rotate(135 12 12)">
++    <clipPath id="composery-icon-holes">
++      <path clip-rule="evenodd" d="M0 0H24V24H0Z M10.95 11.55653 L10.95 3.6 A1.05 1.05 0 0 1 13.05 3.6 L13.05 11.55653 A3.6 3.6 0 1 1 10.95 11.55653 Z" />
++    </clipPath>
++    <path d="M12 5 L17.6 14.6 C20.6 19.8 19.2 19.8 15.6 19.8 L8.4 19.8 C4.8 19.8 3.4 19.8 6.4 14.6 Z" fill="#fafafa" stroke="#fafafa" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.6" clip-path="url(#composery-icon-holes)" />
++  </g>
+ </svg>
+--- a/lib/vscode/src/vs/sessions/contrib/chat/browser/media/letterpress-sessions-light.svg
++++ b/lib/vscode/src/vs/sessions/contrib/chat/browser/media/letterpress-sessions-light.svg
+@@ -1,6 +1,8 @@
+-<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+-<path d="M6 93.2529V37.8398H10C10 40.8834 11.5856 43.6395 14.084 45.1855L14.3291 45.332L14.333 45.334L60.667 72.0713V116.347C60.6669 118.957 59.2702 121.374 57.0039 122.689C54.7312 124.009 51.9403 124.01 49.667 122.692L9.66699 99.5986L9.45215 99.4697C7.30992 98.1291 6 95.7813 6 93.2529ZM10 93.2529C10 94.4295 10.6306 95.5326 11.6709 96.1367L51.667 119.228L51.6709 119.23C52.7033 119.83 53.9637 119.83 54.9961 119.23C56.0363 118.626 56.6669 117.523 56.667 116.347V74.3818L12.334 48.7988C11.4848 48.3111 10.703 47.7295 10 47.0713V93.2529Z" fill="#D9D9D9"/>
+-<path d="M56.667 11.6533C56.6669 10.4769 56.0363 9.37358 54.9961 8.76956C53.9638 8.17014 52.7032 8.17019 51.6709 8.76956L51.666 8.77248L14.333 30.3194C11.6446 31.8825 10.0002 34.7424 10 37.8399C10 40.8835 11.5854 43.6405 14.084 45.1865L14.3291 45.3321L14.333 45.335L56.667 69.7637V11.6533ZM60.667 76.6905L12.3379 48.8008C8.47075 46.5817 6 42.4312 6 37.8399C6.00017 33.3128 8.40716 29.1347 12.3291 26.8574L12.334 26.8545L49.6621 5.31155C51.9363 3.99105 54.7297 3.99021 57.0039 5.31057C59.2701 6.62645 60.6669 9.04345 60.667 11.6533V76.6905Z" fill="#D9D9D9"/>
+-<path d="M67.3334 11.6533C67.3335 9.0435 68.7293 6.62647 70.9955 5.31057C73.2697 3.99008 76.063 3.99021 78.3373 5.31057L78.3363 5.31155L118.333 28.4014L118.337 28.4043C120.604 29.7203 122 32.1371 122 34.7471V90.1602H118C118 87.0185 116.31 84.1823 113.671 82.668L113.666 82.6651L67.3334 55.9014V11.6533ZM71.3334 53.5928L115.662 79.1992L116.021 79.4121C116.734 79.8534 117.396 80.3622 118 80.9278V34.7471C118 33.5706 117.37 32.4674 116.329 31.8633L76.3334 8.77248L76.3295 8.76956C75.2971 8.17014 74.0366 8.17019 73.0043 8.76956C71.964 9.37357 71.3335 10.4768 71.3334 11.6533V53.5928Z" fill="#D9D9D9"/>
+-<path d="M118 90.1599C118 87.0182 116.31 84.1829 113.671 82.6686L113.666 82.6657L71.3334 58.2106V116.346C71.3334 117.523 71.964 118.626 73.0043 119.23C74.0366 119.83 75.2971 119.83 76.3295 119.23L76.3334 119.228L113.667 97.6813C116.361 96.1153 118 93.3052 118 90.1599ZM122 90.1599C122 94.7459 119.588 98.8687 115.671 101.143L115.666 101.145L78.3363 122.689L78.3373 122.69C76.0631 124.01 73.2696 124.011 70.9955 122.69C68.7292 121.374 67.3334 118.956 67.3334 116.346V51.2819L115.662 79.1989L116.021 79.4128C119.682 81.678 122 85.7121 122 90.1599Z" fill="#D9D9D9"/>
++<svg width="260" height="260" viewBox="0 0 20 20" opacity="0.09" xmlns="http://www.w3.org/2000/svg">
++  <g transform="translate(-0.7005 -0.7005) scale(1.13527) rotate(135 12 12)">
++    <clipPath id="composery-icon-holes">
++      <path clip-rule="evenodd" d="M0 0H24V24H0Z M10.95 11.55653 L10.95 3.6 A1.05 1.05 0 0 1 13.05 3.6 L13.05 11.55653 A3.6 3.6 0 1 1 10.95 11.55653 Z" />
++    </clipPath>
++    <path d="M12 5 L17.6 14.6 C20.6 19.8 19.2 19.8 15.6 19.8 L8.4 19.8 C4.8 19.8 3.4 19.8 6.4 14.6 Z" fill="#000000" stroke="#000000" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.6" clip-path="url(#composery-icon-holes)" />
++  </g>
+ </svg>
+--- a/lib/vscode/src/vs/workbench/browser/media/code-icon.svg
++++ b/lib/vscode/src/vs/workbench/browser/media/code-icon.svg
+@@ -1 +1,8 @@
+-<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024"><style>.st0{fill:#f6f6f6;fill-opacity:0}.st1{fill:#fff}.st2{fill:#167abf}</style><path class="st0" d="M1024 1024H0V0h1024v1024z"/><path class="st1" d="M1024 85.333v853.333H0V85.333h1024z"/><path class="st2" d="M0 85.333h298.667v853.333H0V85.333zm1024 0v853.333H384V85.333h640zm-554.667 160h341.333v-64H469.333v64zm341.334 533.334H469.333v64h341.333l.001-64zm128-149.334H597.333v64h341.333l.001-64zm0-149.333H597.333v64h341.333l.001-64zm0-149.333H597.333v64h341.333l.001-64z"/></svg>
+\ No newline at end of file
++<svg width="100%" height="100%" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg"><style>svg{color:#000000}@media (prefers-color-scheme:dark){svg{color:#fafafa}}</style>
++  <g transform="translate(-0.7005 -0.7005) scale(1.13527) rotate(135 12 12)">
++    <clipPath id="composery-icon-holes">
++      <path clip-rule="evenodd" d="M0 0H24V24H0Z M10.95 11.55653 L10.95 3.6 A1.05 1.05 0 0 1 13.05 3.6 L13.05 11.55653 A3.6 3.6 0 1 1 10.95 11.55653 Z" />
++    </clipPath>
++    <path d="M12 5 L17.6 14.6 C20.6 19.8 19.2 19.8 15.6 19.8 L8.4 19.8 C4.8 19.8 3.4 19.8 6.4 14.6 Z" fill="currentColor" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.6" clip-path="url(#composery-icon-holes)" />
++  </g>
++</svg>
+--- a/lib/vscode/src/vs/workbench/browser/parts/editor/media/letterpress-dark.svg
++++ b/lib/vscode/src/vs/workbench/browser/parts/editor/media/letterpress-dark.svg
+@@ -1,3 +1,8 @@
+-<svg width="260" height="260" viewBox="0 0 260 260" opacity="0.3" xmlns="http://www.w3.org/2000/svg">
+-<path d="M220 16H40C17.909 16 0 33.909 0 56V204C0 226.091 17.909 244 40 244H220C242.091 244 260 226.091 260 204V56C260 33.909 242.091 16 220 16ZM12 204V56C12 40.561 24.561 28 40 28H75V232H40C24.561 232 12 219.439 12 204ZM248 204C248 219.439 235.439 232 220 232H87V28H220C235.439 28 248 40.561 248 56V204ZM112 58C112 54.686 114.686 52 118 52H187C190.314 52 193 54.686 193 58C193 61.314 190.314 64 187 64H118C114.686 64 112 61.314 112 58ZM193 202C193 205.314 190.314 208 187 208H118C114.686 208 112 205.314 112 202C112 198.686 114.686 196 118 196H187C190.314 196 193 198.686 193 202ZM222 94C222 97.314 219.314 100 216 100H147C143.686 100 141 97.314 141 94C141 90.686 143.686 88 147 88H216C219.314 88 222 90.686 222 94ZM222 130C222 133.314 219.314 136 216 136H147C143.686 136 141 133.314 141 130C141 126.686 143.686 124 147 124H216C219.314 124 222 126.686 222 130ZM222 166C222 169.314 219.314 172 216 172H147C143.686 172 141 169.314 141 166C141 162.686 143.686 160 147 160H216C219.314 160 222 162.686 222 166Z"/>
++<svg width="260" height="260" viewBox="0 0 20 20" opacity="0.12" xmlns="http://www.w3.org/2000/svg">
++  <g transform="translate(-0.7005 -0.7005) scale(1.13527) rotate(135 12 12)">
++    <clipPath id="composery-icon-holes">
++      <path clip-rule="evenodd" d="M0 0H24V24H0Z M10.95 11.55653 L10.95 3.6 A1.05 1.05 0 0 1 13.05 3.6 L13.05 11.55653 A3.6 3.6 0 1 1 10.95 11.55653 Z" />
++    </clipPath>
++    <path d="M12 5 L17.6 14.6 C20.6 19.8 19.2 19.8 15.6 19.8 L8.4 19.8 C4.8 19.8 3.4 19.8 6.4 14.6 Z" fill="#fafafa" stroke="#fafafa" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.6" clip-path="url(#composery-icon-holes)" />
++  </g>
+ </svg>
+--- a/lib/vscode/src/vs/workbench/browser/parts/editor/media/letterpress-hcDark.svg
++++ b/lib/vscode/src/vs/workbench/browser/parts/editor/media/letterpress-hcDark.svg
+@@ -1,3 +1,8 @@
+-<svg width="260" height="260" viewBox="0 0 260 260" fill="none" xmlns="http://www.w3.org/2000/svg">
+-<path d="M220 16H40C17.909 16 0 33.909 0 56V204C0 226.091 17.909 244 40 244H220C242.091 244 260 226.091 260 204V56C260 33.909 242.091 16 220 16ZM12 204V56C12 40.561 24.561 28 40 28H75V232H40C24.561 232 12 219.439 12 204ZM248 204C248 219.439 235.439 232 220 232H87V28H220C235.439 28 248 40.561 248 56V204ZM112 58C112 54.686 114.686 52 118 52H187C190.314 52 193 54.686 193 58C193 61.314 190.314 64 187 64H118C114.686 64 112 61.314 112 58ZM193 202C193 205.314 190.314 208 187 208H118C114.686 208 112 205.314 112 202C112 198.686 114.686 196 118 196H187C190.314 196 193 198.686 193 202ZM222 94C222 97.314 219.314 100 216 100H147C143.686 100 141 97.314 141 94C141 90.686 143.686 88 147 88H216C219.314 88 222 90.686 222 94ZM222 130C222 133.314 219.314 136 216 136H147C143.686 136 141 133.314 141 130C141 126.686 143.686 124 147 124H216C219.314 124 222 126.686 222 130ZM222 166C222 169.314 219.314 172 216 172H147C143.686 172 141 169.314 141 166C141 162.686 143.686 160 147 160H216C219.314 160 222 162.686 222 166Z" fill="#3C3C3C"/>
++<svg width="260" height="260" viewBox="0 0 20 20" opacity="0.6" xmlns="http://www.w3.org/2000/svg">
++  <g transform="translate(-0.7005 -0.7005) scale(1.13527) rotate(135 12 12)">
++    <clipPath id="composery-icon-holes">
++      <path clip-rule="evenodd" d="M0 0H24V24H0Z M10.95 11.55653 L10.95 3.6 A1.05 1.05 0 0 1 13.05 3.6 L13.05 11.55653 A3.6 3.6 0 1 1 10.95 11.55653 Z" />
++    </clipPath>
++    <path d="M12 5 L17.6 14.6 C20.6 19.8 19.2 19.8 15.6 19.8 L8.4 19.8 C4.8 19.8 3.4 19.8 6.4 14.6 Z" fill="#fafafa" stroke="#fafafa" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.6" clip-path="url(#composery-icon-holes)" />
++  </g>
+ </svg>
+--- a/lib/vscode/src/vs/workbench/browser/parts/editor/media/letterpress-hcLight.svg
++++ b/lib/vscode/src/vs/workbench/browser/parts/editor/media/letterpress-hcLight.svg
+@@ -1,3 +1,8 @@
+-<svg width="260" height="260" viewBox="0 0 260 260" fill="none" xmlns="http://www.w3.org/2000/svg">
+-<path d="M220 16H40C17.909 16 0 33.909 0 56V204C0 226.091 17.909 244 40 244H220C242.091 244 260 226.091 260 204V56C260 33.909 242.091 16 220 16ZM12 204V56C12 40.561 24.561 28 40 28H75V232H40C24.561 232 12 219.439 12 204ZM248 204C248 219.439 235.439 232 220 232H87V28H220C235.439 28 248 40.561 248 56V204ZM112 58C112 54.686 114.686 52 118 52H187C190.314 52 193 54.686 193 58C193 61.314 190.314 64 187 64H118C114.686 64 112 61.314 112 58ZM193 202C193 205.314 190.314 208 187 208H118C114.686 208 112 205.314 112 202C112 198.686 114.686 196 118 196H187C190.314 196 193 198.686 193 202ZM222 94C222 97.314 219.314 100 216 100H147C143.686 100 141 97.314 141 94C141 90.686 143.686 88 147 88H216C219.314 88 222 90.686 222 94ZM222 130C222 133.314 219.314 136 216 136H147C143.686 136 141 133.314 141 130C141 126.686 143.686 124 147 124H216C219.314 124 222 126.686 222 130ZM222 166C222 169.314 219.314 172 216 172H147C143.686 172 141 169.314 141 166C141 162.686 143.686 160 147 160H216C219.314 160 222 162.686 222 166Z" fill="#D9D9D9"/>
++<svg width="260" height="260" viewBox="0 0 20 20" opacity="0.6" xmlns="http://www.w3.org/2000/svg">
++  <g transform="translate(-0.7005 -0.7005) scale(1.13527) rotate(135 12 12)">
++    <clipPath id="composery-icon-holes">
++      <path clip-rule="evenodd" d="M0 0H24V24H0Z M10.95 11.55653 L10.95 3.6 A1.05 1.05 0 0 1 13.05 3.6 L13.05 11.55653 A3.6 3.6 0 1 1 10.95 11.55653 Z" />
++    </clipPath>
++    <path d="M12 5 L17.6 14.6 C20.6 19.8 19.2 19.8 15.6 19.8 L8.4 19.8 C4.8 19.8 3.4 19.8 6.4 14.6 Z" fill="#000000" stroke="#000000" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.6" clip-path="url(#composery-icon-holes)" />
++  </g>
+ </svg>
+--- a/lib/vscode/src/vs/workbench/browser/parts/editor/media/letterpress-light.svg
++++ b/lib/vscode/src/vs/workbench/browser/parts/editor/media/letterpress-light.svg
+@@ -1,3 +1,8 @@
+-<svg width="260" height="260" viewBox="0 0 260 260" opacity="0.1" xmlns="http://www.w3.org/2000/svg">
+-<path d="M220 16H40C17.909 16 0 33.909 0 56V204C0 226.091 17.909 244 40 244H220C242.091 244 260 226.091 260 204V56C260 33.909 242.091 16 220 16ZM12 204V56C12 40.561 24.561 28 40 28H75V232H40C24.561 232 12 219.439 12 204ZM248 204C248 219.439 235.439 232 220 232H87V28H220C235.439 28 248 40.561 248 56V204ZM112 58C112 54.686 114.686 52 118 52H187C190.314 52 193 54.686 193 58C193 61.314 190.314 64 187 64H118C114.686 64 112 61.314 112 58ZM193 202C193 205.314 190.314 208 187 208H118C114.686 208 112 205.314 112 202C112 198.686 114.686 196 118 196H187C190.314 196 193 198.686 193 202ZM222 94C222 97.314 219.314 100 216 100H147C143.686 100 141 97.314 141 94C141 90.686 143.686 88 147 88H216C219.314 88 222 90.686 222 94ZM222 130C222 133.314 219.314 136 216 136H147C143.686 136 141 133.314 141 130C141 126.686 143.686 124 147 124H216C219.314 124 222 126.686 222 130ZM222 166C222 169.314 219.314 172 216 172H147C143.686 172 141 169.314 141 166C141 162.686 143.686 160 147 160H216C219.314 160 222 162.686 222 166Z"/>
++<svg width="260" height="260" viewBox="0 0 20 20" opacity="0.09" xmlns="http://www.w3.org/2000/svg">
++  <g transform="translate(-0.7005 -0.7005) scale(1.13527) rotate(135 12 12)">
++    <clipPath id="composery-icon-holes">
++      <path clip-rule="evenodd" d="M0 0H24V24H0Z M10.95 11.55653 L10.95 3.6 A1.05 1.05 0 0 1 13.05 3.6 L13.05 11.55653 A3.6 3.6 0 1 1 10.95 11.55653 Z" />
++    </clipPath>
++    <path d="M12 5 L17.6 14.6 C20.6 19.8 19.2 19.8 15.6 19.8 L8.4 19.8 C4.8 19.8 3.4 19.8 6.4 14.6 Z" fill="#000000" stroke="#000000" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.6" clip-path="url(#composery-icon-holes)" />
++  </g>
+ </svg>
+--- a/lib/vscode/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
++++ b/lib/vscode/src/vs/workbench/browser/parts/titlebar/media/titlebarpart.css
+@@ -290,20 +290,30 @@
+ }
+ 
+ .monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .window-appicon:not(.codicon) {
+-	background-image: url('../../../media/code-icon.svg');
+-	background-repeat: no-repeat;
+-	background-position: center center;
+-	background-size: 16px;
++	/* Composery: as a plain background-image the logo SVG self-colours from the BROWSER
++	   scheme (prefers-color-scheme inside the SVG), which the active IDE theme need not
++	   match - a light theme in a dark browser got a near-white logo on a white titlebar.
++	   Paint it as a mask filled with the titlebar's own foreground so it always contrasts,
++	   under every theme and scheme. Sized up from upstream's 16px so the logo reads
++	   comfortably. */
++	background-color: var(--vscode-titleBar-activeForeground);
++	-webkit-mask: url('../../../media/code-icon.svg') center center / 20px no-repeat;
++	mask: url('../../../media/code-icon.svg') center center / 20px no-repeat;
+ }
+ 
+-.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .window-appicon.codicon {
+-	line-height: 30px;
++/* Composery: subtle hover on the logo link. The titlebar's window-icons hover via a
++   background-color tint, but the logo uses background-color as its mask fill, so fade opacity instead. */
++.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .window-appicon:not(.codicon):hover {
++	opacity: 0.8;
++	transition: opacity 0.1s;
+ }
+ 
+-.monaco-workbench.fullscreen .part.titlebar > .titlebar-container > .titlebar-left > .window-appicon {
+-	display: none;
++.monaco-workbench .part.titlebar > .titlebar-container > .titlebar-left > .window-appicon.codicon {
++	line-height: 30px;
+ }
+ 
++/* Composery: upstream hides the app icon in fullscreen (desktop convention);
++   our logo is browser chrome that stays visible on every surface. */
+ /* Window Controls Container */
+ .monaco-workbench .part.titlebar .window-controls-container {
+ 	display: flex;
+--- a/lib/vscode/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
++++ b/lib/vscode/src/vs/workbench/browser/parts/titlebar/titlebarPart.ts
+@@ -10,6 +10,7 @@ import { ITitleService } from '../../../services/title/browser/titleService.js';
+ import { getWCOTitlebarAreaRect, getZoomFactor, isWCOEnabled } from '../../../../base/browser/browser.js';
+ import { MenuBarVisibility, getTitleBarStyle, getMenuBarVisibility, hasCustomTitlebar, hasNativeTitlebar, DEFAULT_CUSTOM_TITLEBAR_HEIGHT, getWindowControlsStyle, WindowControlsStyle, TitlebarStyle, MenuSettings, hasNativeMenu } from '../../../../platform/window/common/window.js';
+ import { IContextMenuService } from '../../../../platform/contextview/browser/contextView.js';
++import { IClipboardService } from '../../../../platform/clipboard/common/clipboardService.js';
+ import { StandardMouseEvent } from '../../../../base/browser/mouseEvent.js';
+ import { IConfigurationService, IConfigurationChangeEvent } from '../../../../platform/configuration/common/configuration.js';
+ import { DisposableStore, IDisposable, MutableDisposable } from '../../../../base/common/lifecycle.js';
+@@ -37,7 +38,7 @@ import { ACCOUNTS_ACTIVITY_ID, GLOBAL_ACTIVITY_ID } from '../../../common/activi
+ import { AccountsActivityActionViewItem, isAccountsActionVisible, SimpleAccountActivityActionViewItem, SimpleGlobalActivityActionViewItem } from '../globalCompositeBar.js';
+ import { HoverPosition } from '../../../../base/browser/ui/hover/hoverWidget.js';
+ import { IEditorGroupsContainer, IEditorGroupsService } from '../../../services/editor/common/editorGroupsService.js';
+-import { ActionRunner, IAction, Separator } from '../../../../base/common/actions.js';
++import { ActionRunner, IAction, Separator, toAction } from '../../../../base/common/actions.js';
+ import { IEditorService } from '../../../services/editor/common/editorService.js';
+ import { ActionsOrientation, IActionViewItem, prepareActions } from '../../../../base/browser/ui/actionbar/actionbar.js';
+ import { EDITOR_CORE_NAVIGATION_COMMANDS } from '../editor/editorCommands.js';
+@@ -470,9 +471,15 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
+ 		this.centerContent = append(this.rootContainer, $('.titlebar-center'));
+ 		this.rightContent = append(this.rootContainer, $('.titlebar-right'));
+ 
+-		// App Icon (Windows, Linux)
+-		if ((isWindows || isLinux) && !hasNativeTitlebar(this.configurationService, this.titleBarStyle)) {
++		// App Icon
++		// Composery: the custom titlebar is our branded browser chrome on every
++		// platform. Upstream only shows the icon on Windows/Linux to mirror native
++		// desktop conventions; we show it whenever there is no native titlebar.
++		if (!hasNativeTitlebar(this.configurationService, this.titleBarStyle)) {
+ 			this.appIcon = prepend(this.leftContent, $('a.window-appicon'));
++			// Composery: website logos conventionally link to the site's root in the same tab.
++			this.appIcon.setAttribute('href', 'https://www.composery.io');
++			this.appIcon.setAttribute('aria-label', localize('composeryWebsite', "Composery"));
+ 		}
+ 
+ 		// Draggable region that we can manipulate for #52522
+@@ -562,6 +569,21 @@ export class BrowserTitlebarPart extends Part implements ITitlebarPart {
+ 			this._register(addDisposableListener(this.rootContainer, EventType.CONTEXT_MENU, e => {
+ 				EventHelper.stop(e);
+ 
++				// Composery: the logo is a link, so give it a browser-style link context menu -
++				// rendered with the workbench context menu so it matches the File > ... menus.
++				const logoHref = this.appIcon?.getAttribute('href');
++				if (logoHref && isHTMLElement(e.target) && isAncestor(e.target, this.appIcon!)) {
++					const anchor = new StandardMouseEvent(getWindow(this.element), e);
++					this.contextMenuService.showContextMenu({
++						getAnchor: () => anchor,
++						getActions: () => [
++							toAction({ id: 'composery.logo.openInNewTab', label: localize('composeryLogoOpenInNewTab', "Open Link in New Tab"), run: () => getWindow(this.element).open(logoHref, '_blank', 'noopener') }),
++							toAction({ id: 'composery.logo.copyLinkAddress', label: localize('composeryLogoCopyLinkAddress', "Copy Link Address"), run: () => this.instantiationService.invokeFunction(accessor => accessor.get(IClipboardService).writeText(logoHref)) })
++						]
++					});
++					return;
++				}
++
+ 				let targetMenu: MenuId;
+ 				if (isMacintosh && isHTMLElement(e.target) && isAncestor(e.target, this.title)) {
+ 					targetMenu = MenuId.TitleBarTitleContext;
+--- a/lib/vscode/src/vs/workbench/services/themes/browser/workbenchThemeService.ts
++++ b/lib/vscode/src/vs/workbench/services/themes/browser/workbenchThemeService.ts
+@@ -180,7 +180,14 @@ export class WorkbenchThemeService extends Disposable implements IWorkbenchTheme
+ 			this.installConfigurationListener();
+ 			this.installPreferredSchemeListener();
+ 			this.installRegistryListeners();
+-			this.initialize(previousColorThemeSetting).catch(errors.onUnexpectedError);
++			// Composery: re-read the active colour theme from disk after init so a rebuilt
++			// theme overrides the colours VS Code persisted in browser storage, instead of
++			// the stale colours surviving until a fresh browser profile / incognito. The
++			// registry 'added' event that normally triggers this is missed for builtin
++			// themes (it fires before this listener attaches), so force it once here.
++			this.initialize(previousColorThemeSetting)
++				.then(() => this.reloadCurrentColorTheme())
++				.catch(errors.onUnexpectedError);
+ 		});
+ 
+ 		const codiconStyleSheet = createStyleSheet();
+--- a/lib/vscode/src/vs/workbench/services/themes/common/workbenchThemeService.ts
++++ b/lib/vscode/src/vs/workbench/services/themes/common/workbenchThemeService.ts
+@@ -39,8 +39,8 @@ export enum ThemeSettings {
+ }
+ 
+ export namespace ThemeSettingDefaults {
+-	export const COLOR_THEME_DARK = 'Dark 2026';
+-	export const COLOR_THEME_LIGHT = 'Light 2026';
++	export const COLOR_THEME_DARK = 'Composery Dark';
++	export const COLOR_THEME_LIGHT = 'Composery Light';
+ 	export const COLOR_THEME_HC_DARK = 'Default High Contrast';
+ 	export const COLOR_THEME_HC_LIGHT = 'Default High Contrast Light';
+ 
+@@ -71,296 +71,296 @@ export function migrateThemeSettingsId(settingsId: string): string {
+ 
+ export const COLOR_THEME_DARK_INITIAL_COLORS = {
+-	'actionBar.toggledBackground': '#383a49',
++	'actionBar.toggledBackground': '#1c1c1c',
+-	'activityBar.activeBorder': '#0078D4',
+-	'activityBar.background': '#181818',
+-	'activityBar.border': '#2B2B2B',
+-	'activityBar.foreground': '#D7D7D7',
+-	'activityBar.inactiveForeground': '#868686',
+-	'activityBarBadge.background': '#0078D4',
+-	'activityBarBadge.foreground': '#FFFFFF',
+-	'badge.background': '#616161',
+-	'badge.foreground': '#F8F8F8',
+-	'button.background': '#0078D4',
+-	'button.border': '#FFFFFF12',
+-	'button.foreground': '#FFFFFF',
+-	'button.hoverBackground': '#026EC1',
+-	'button.secondaryBackground': '#313131',
+-	'button.secondaryForeground': '#CCCCCC',
+-	'button.secondaryHoverBackground': '#3C3C3C',
+-	'chat.slashCommandBackground': '#26477866',
+-	'chat.slashCommandForeground': '#85B6FF',
++	'activityBar.activeBorder': '#9a9a9a',
++	'activityBar.background': '#1c1c1c',
++	'activityBar.border': '#00000000',
++	'activityBar.foreground': '#e2e2e2',
++	'activityBar.inactiveForeground': '#9a9a9a',
++	'activityBarBadge.background': '#2e2e2e',
++	'activityBarBadge.foreground': '#e2e2e2',
++	'badge.background': '#2e2e2e',
++	'badge.foreground': '#e2e2e2',
++	'button.background': '#e2e2e2',
++	'button.border': '#00000000',
++	'button.foreground': '#171717',
++	'button.hoverBackground': '#d0d0d0',
++	'button.secondaryBackground': '#1c1c1c',
++	'button.secondaryForeground': '#e2e2e2',
++	'button.secondaryHoverBackground': '#242424',
++	'chat.slashCommandBackground': '#2b2b2b',
++	'chat.slashCommandForeground': '#e2e2e2',
+-	'chat.editedFileForeground': '#E2C08D',
++	'chat.editedFileForeground': '#d19a66',
+-	'checkbox.background': '#313131',
+-	'checkbox.border': '#3C3C3C',
++	'checkbox.background': '#262626',
++	'checkbox.border': '#00000000',
+-	'debugToolBar.background': '#181818',
++	'debugToolBar.background': '#212121',
+-	'descriptionForeground': '#9D9D9D',
++	'descriptionForeground': '#9a9a9a',
+-	'dropdown.background': '#313131',
+-	'dropdown.border': '#3C3C3C',
++	'dropdown.background': '#212121',
++	'dropdown.border': '#00000000',
+-	'dropdown.foreground': '#CCCCCC',
++	'dropdown.foreground': '#e2e2e2',
+-	'dropdown.listBackground': '#1F1F1F',
++	'dropdown.listBackground': '#212121',
+-	'editor.background': '#1F1F1F',
+-	'editor.findMatchBackground': '#9E6A03',
+-	'editor.foreground': '#CCCCCC',
+-	'editor.inactiveSelectionBackground': '#3A3D41',
+-	'editor.selectionHighlightBackground': '#ADD6FF26',
+-	'editorGroup.border': '#FFFFFF17',
+-	'editorGroupHeader.tabsBackground': '#181818',
+-	'editorGroupHeader.tabsBorder': '#2B2B2B',
++	'editor.background': '#171717',
++	'editor.findMatchBackground': '#d19a6666',
++	'editor.foreground': '#e2e2e2',
++	'editor.inactiveSelectionBackground': '#363636',
++	'editor.selectionHighlightBackground': '#ffffff0d',
++	'editorGroup.border': '#00000000',
++	'editorGroupHeader.tabsBackground': '#1c1c1c',
++	'editorGroupHeader.tabsBorder': '#00000000',
+-	'editorGutter.addedBackground': '#2EA043',
++	'editorGutter.addedBackground': '#5cb877',
+-	'editorGutter.deletedBackground': '#F85149',
++	'editorGutter.deletedBackground': '#e06c75',
+-	'editorGutter.modifiedBackground': '#0078D4',
++	'editorGutter.modifiedBackground': '#d19a66',
+-	'editorIndentGuide.activeBackground1': '#707070',
++	'editorIndentGuide.activeBackground1': '#ffffff33',
+-	'editorIndentGuide.background1': '#404040',
++	'editorIndentGuide.background1': '#ffffff14',
+-	'editorLineNumber.activeForeground': '#CCCCCC',
++	'editorLineNumber.activeForeground': '#e2e2e2',
+-	'editorLineNumber.foreground': '#6E7681',
++	'editorLineNumber.foreground': '#8a8a8a',
+-	'editorOverviewRuler.border': '#010409',
+-	'editorWidget.background': '#202020',
++	'editorOverviewRuler.border': '#00000000',
++	'editorWidget.background': '#212121',
+-	'errorForeground': '#F85149',
++	'errorForeground': '#e06c75',
+-	'focusBorder': '#0078D4',
++	'focusBorder': '#9a9a9a',
+-	'foreground': '#CCCCCC',
++	'foreground': '#e2e2e2',
+-	'icon.foreground': '#CCCCCC',
++	'icon.foreground': '#e2e2e2',
+-	'input.background': '#313131',
+-	'input.border': '#3C3C3C',
++	'input.background': '#262626',
++	'input.border': '#00000000',
+-	'input.foreground': '#CCCCCC',
++	'input.foreground': '#e2e2e2',
+-	'input.placeholderForeground': '#989898',
++	'input.placeholderForeground': '#8f8f8f',
+-	'inputOption.activeBackground': '#2489DB82',
+-	'inputOption.activeBorder': '#2488DB',
++	'inputOption.activeBackground': '#363636',
++	'inputOption.activeBorder': '#9a9a9a',
+-	'keybindingLabel.foreground': '#CCCCCC',
++	'keybindingLabel.foreground': '#e2e2e2',
+-	'list.activeSelectionIconForeground': '#FFF',
++	'list.activeSelectionIconForeground': '#9a9a9a',
+-	'list.dropBackground': '#383B3D',
+-	'menu.background': '#1F1F1F',
+-	'menu.border': '#454545',
++	'list.dropBackground': '#363636',
++	'menu.background': '#212121',
++	'menu.border': '#00000000',
+-	'menu.foreground': '#CCCCCC',
++	'menu.foreground': '#e2e2e2',
+-	'menu.selectionBackground': '#0078d4',
++	'menu.selectionBackground': '#363636',
+-	'menu.separatorBackground': '#454545',
++	'menu.separatorBackground': '#ffffff1a',
+-	'notificationCenterHeader.background': '#1F1F1F',
++	'notificationCenterHeader.background': '#212121',
+-	'notificationCenterHeader.foreground': '#CCCCCC',
++	'notificationCenterHeader.foreground': '#e2e2e2',
+-	'notifications.background': '#1F1F1F',
+-	'notifications.border': '#2B2B2B',
++	'notifications.background': '#212121',
++	'notifications.border': '#00000000',
+-	'notifications.foreground': '#CCCCCC',
++	'notifications.foreground': '#e2e2e2',
+-	'panel.background': '#181818',
+-	'panel.border': '#2B2B2B',
++	'panel.background': '#1c1c1c',
++	'panel.border': '#00000000',
+-	'panelInput.border': '#2B2B2B',
++	'panelInput.border': '#00000000',
+-	'panelTitle.activeBorder': '#0078D4',
++	'panelTitle.activeBorder': '#9a9a9a',
+-	'panelTitle.activeForeground': '#CCCCCC',
++	'panelTitle.activeForeground': '#e2e2e2',
+-	'panelTitle.inactiveForeground': '#9D9D9D',
++	'panelTitle.inactiveForeground': '#9a9a9a',
+-	'peekViewEditor.background': '#1F1F1F',
+-	'peekViewEditor.matchHighlightBackground': '#BB800966',
+-	'peekViewResult.background': '#1F1F1F',
+-	'peekViewResult.matchHighlightBackground': '#BB800966',
+-	'pickerGroup.border': '#3C3C3C',
++	'peekViewEditor.background': '#212121',
++	'peekViewEditor.matchHighlightBackground': '#d19a663d',
++	'peekViewResult.background': '#212121',
++	'peekViewResult.matchHighlightBackground': '#d19a663d',
++	'pickerGroup.border': '#00000000',
+-	'ports.iconRunningProcessForeground': '#369432',
++	'ports.iconRunningProcessForeground': '#5cb877',
+-	'progressBar.background': '#0078D4',
+-	'quickInput.background': '#222222',
++	'progressBar.background': '#9a9a9a',
++	'quickInput.background': '#212121',
+-	'quickInput.foreground': '#CCCCCC',
++	'quickInput.foreground': '#e2e2e2',
+-	'settings.dropdownBackground': '#313131',
++	'settings.dropdownBackground': '#212121',
+-	'settings.dropdownBorder': '#3C3C3C',
++	'settings.dropdownBorder': '#00000000',
+-	'settings.headerForeground': '#FFFFFF',
+-	'settings.modifiedItemIndicator': '#BB800966',
+-	'sideBar.background': '#181818',
+-	'sideBar.border': '#2B2B2B',
++	'settings.headerForeground': '#e2e2e2',
++	'settings.modifiedItemIndicator': '#d19a66',
++	'sideBar.background': '#1c1c1c',
++	'sideBar.border': '#00000000',
+-	'sideBar.foreground': '#CCCCCC',
++	'sideBar.foreground': '#e2e2e2',
+-	'sideBarSectionHeader.background': '#181818',
+-	'sideBarSectionHeader.border': '#2B2B2B',
++	'sideBarSectionHeader.background': '#1c1c1c',
++	'sideBarSectionHeader.border': '#00000000',
+-	'sideBarSectionHeader.foreground': '#CCCCCC',
++	'sideBarSectionHeader.foreground': '#e2e2e2',
+-	'sideBarTitle.foreground': '#CCCCCC',
+-	'statusBar.background': '#181818',
+-	'statusBar.border': '#2B2B2B',
+-	'statusBar.debuggingBackground': '#0078D4',
+-	'statusBar.debuggingForeground': '#FFFFFF',
+-	'statusBar.focusBorder': '#0078D4',
+-	'statusBar.foreground': '#CCCCCC',
+-	'statusBar.noFolderBackground': '#1F1F1F',
+-	'statusBarItem.focusBorder': '#0078D4',
++	'sideBarTitle.foreground': '#9a9a9a',
++	'statusBar.background': '#1c1c1c',
++	'statusBar.border': '#00000000',
++	'statusBar.debuggingBackground': '#e2e2e2',
++	'statusBar.debuggingForeground': '#171717',
++	'statusBar.focusBorder': '#9a9a9a',
++	'statusBar.foreground': '#9a9a9a',
++	'statusBar.noFolderBackground': '#1c1c1c',
++	'statusBarItem.focusBorder': '#9a9a9a',
+-	'statusBarItem.prominentBackground': '#6E768166',
++	'statusBarItem.prominentBackground': '#2b2b2b',
+-	'statusBarItem.remoteBackground': '#0078D4',
+-	'statusBarItem.remoteForeground': '#FFFFFF',
+-	'tab.activeBackground': '#1F1F1F',
+-	'tab.activeBorder': '#1F1F1F',
+-	'tab.activeBorderTop': '#0078D4',
+-	'tab.activeForeground': '#FFFFFF',
+-	'tab.border': '#2B2B2B',
+-	'tab.hoverBackground': '#1F1F1F',
+-	'tab.inactiveBackground': '#181818',
+-	'tab.inactiveForeground': '#9D9D9D',
++	'statusBarItem.remoteBackground': '#2e2e2e',
++	'statusBarItem.remoteForeground': '#e2e2e2',
++	'tab.activeBackground': '#171717',
++	'tab.activeBorder': '#00000000',
++	'tab.activeBorderTop': '#9a9a9a',
++	'tab.activeForeground': '#e2e2e2',
++	'tab.border': '#00000000',
++	'tab.hoverBackground': '#2b2b2b',
++	'tab.inactiveBackground': '#1c1c1c',
++	'tab.inactiveForeground': '#9a9a9a',
+-	'tab.lastPinnedBorder': '#ccc3',
++	'tab.lastPinnedBorder': '#00000000',
+-	'tab.selectedBackground': '#222222',
++	'tab.selectedBackground': '#363636',
+-	'tab.selectedBorderTop': '#6caddf',
++	'tab.selectedBorderTop': '#9a9a9a',
+-	'tab.selectedForeground': '#ffffffa0',
++	'tab.selectedForeground': '#e2e2e2',
+-	'tab.unfocusedActiveBorder': '#1F1F1F',
++	'tab.unfocusedActiveBorder': '#00000000',
+-	'tab.unfocusedActiveBorderTop': '#2B2B2B',
++	'tab.unfocusedActiveBorderTop': '#9a9a9a',
+-	'tab.unfocusedHoverBackground': '#1F1F1F',
++	'tab.unfocusedHoverBackground': '#2b2b2b',
+-	'terminal.foreground': '#CCCCCC',
++	'terminal.foreground': '#e2e2e2',
+-	'terminal.inactiveSelectionBackground': '#3A3D41',
+-	'terminal.tab.activeBorder': '#0078D4',
++	'terminal.inactiveSelectionBackground': '#ffffff0d',
++	'terminal.tab.activeBorder': '#9a9a9a',
+-	'textBlockQuote.background': '#2B2B2B',
++	'textBlockQuote.background': '#212121',
+-	'textBlockQuote.border': '#616161',
++	'textBlockQuote.border': '#00000000',
+-	'textCodeBlock.background': '#2B2B2B',
++	'textCodeBlock.background': '#212121',
+-	'textLink.activeForeground': '#4daafc',
+-	'textLink.foreground': '#4daafc',
++	'textLink.activeForeground': '#e2e2e2',
++	'textLink.foreground': '#e2e2e2',
+-	'textPreformat.background': '#3C3C3C',
++	'textPreformat.background': '#ffffff0d',
+-	'textPreformat.foreground': '#D0D0D0',
++	'textPreformat.foreground': '#e2e2e2',
+-	'textSeparator.foreground': '#21262D',
++	'textSeparator.foreground': '#ffffff1a',
+-	'titleBar.activeBackground': '#181818',
+-	'titleBar.activeForeground': '#CCCCCC',
+-	'titleBar.border': '#2B2B2B',
+-	'titleBar.inactiveBackground': '#1F1F1F',
++	'titleBar.activeBackground': '#1c1c1c',
++	'titleBar.activeForeground': '#e2e2e2',
++	'titleBar.border': '#00000000',
++	'titleBar.inactiveBackground': '#1c1c1c',
+-	'titleBar.inactiveForeground': '#9D9D9D',
++	'titleBar.inactiveForeground': '#9a9a9a',
+-	'welcomePage.progress.foreground': '#0078D4',
+-	'welcomePage.tileBackground': '#2B2B2B',
+-	'widget.border': '#313131'
++	'welcomePage.progress.foreground': '#9a9a9a',
++	'welcomePage.tileBackground': '#212121',
++	'widget.border': '#00000000'
+ };
+ 
+ export const COLOR_THEME_LIGHT_INITIAL_COLORS = {
+-	'actionBar.toggledBackground': '#dddddd',
++	'actionBar.toggledBackground': '#efefef',
+-	'activityBar.activeBorder': '#005FB8',
+-	'activityBar.background': '#F8F8F8',
+-	'activityBar.border': '#E5E5E5',
+-	'activityBar.foreground': '#1F1F1F',
+-	'activityBar.inactiveForeground': '#616161',
+-	'activityBarBadge.background': '#005FB8',
+-	'activityBarBadge.foreground': '#FFFFFF',
+-	'badge.background': '#CCCCCC',
+-	'badge.foreground': '#3B3B3B',
+-	'button.background': '#005FB8',
++	'activityBar.activeBorder': '#5f5f5f',
++	'activityBar.background': '#efefef',
++	'activityBar.border': '#00000000',
++	'activityBar.foreground': '#2b2b2b',
++	'activityBar.inactiveForeground': '#5f5f5f',
++	'activityBarBadge.background': '#dfdfdf',
++	'activityBarBadge.foreground': '#2b2b2b',
++	'badge.background': '#dfdfdf',
++	'badge.foreground': '#2b2b2b',
++	'button.background': '#2b2b2b',
+-	'button.border': '#0000001a',
++	'button.border': '#00000000',
+-	'button.foreground': '#FFFFFF',
+-	'button.hoverBackground': '#0258A8',
+-	'button.secondaryBackground': '#E5E5E5',
+-	'button.secondaryForeground': '#3B3B3B',
+-	'button.secondaryHoverBackground': '#CCCCCC',
+-	'chat.slashCommandBackground': '#ADCEFF7A',
+-	'chat.slashCommandForeground': '#26569E',
+-	'chat.editedFileForeground': '#895503',
+-	'checkbox.background': '#F8F8F8',
+-	'checkbox.border': '#CECECE',
++	'button.foreground': '#f6f6f6',
++	'button.hoverBackground': '#313131',
++	'button.secondaryBackground': '#efefef',
++	'button.secondaryForeground': '#2b2b2b',
++	'button.secondaryHoverBackground': '#e7e7e7',
++	'chat.slashCommandBackground': '#dfdfdf',
++	'chat.slashCommandForeground': '#2b2b2b',
++	'chat.editedFileForeground': '#8f6f21',
++	'checkbox.background': '#e7e7e7',
++	'checkbox.border': '#00000000',
+-	'descriptionForeground': '#3B3B3B',
++	'descriptionForeground': '#5f5f5f',
+-	'diffEditor.unchangedRegionBackground': '#f8f8f8',
++	'diffEditor.unchangedRegionBackground': '#ececec',
+-	'dropdown.background': '#FFFFFF',
+-	'dropdown.border': '#CECECE',
++	'dropdown.background': '#ececec',
++	'dropdown.border': '#00000000',
+-	'dropdown.foreground': '#3B3B3B',
++	'dropdown.foreground': '#2b2b2b',
+-	'dropdown.listBackground': '#FFFFFF',
++	'dropdown.listBackground': '#ececec',
+-	'editor.background': '#FFFFFF',
+-	'editor.foreground': '#3B3B3B',
+-	'editor.inactiveSelectionBackground': '#E5EBF1',
+-	'editor.selectionHighlightBackground': '#ADD6FF80',
+-	'editorGroup.border': '#E5E5E5',
+-	'editorGroupHeader.tabsBackground': '#F8F8F8',
+-	'editorGroupHeader.tabsBorder': '#E5E5E5',
++	'editor.background': '#f6f6f6',
++	'editor.foreground': '#2b2b2b',
++	'editor.inactiveSelectionBackground': '#d6d6d6',
++	'editor.selectionHighlightBackground': '#2b2b2b0d',
++	'editorGroup.border': '#00000000',
++	'editorGroupHeader.tabsBackground': '#e9e9e9',
++	'editorGroupHeader.tabsBorder': '#00000000',
+-	'editorGutter.addedBackground': '#2EA043',
++	'editorGutter.addedBackground': '#2e7a44',
+-	'editorGutter.deletedBackground': '#F85149',
++	'editorGutter.deletedBackground': '#b03a30',
+-	'editorGutter.modifiedBackground': '#005FB8',
++	'editorGutter.modifiedBackground': '#8f6f21',
+-	'editorIndentGuide.activeBackground1': '#939393',
++	'editorIndentGuide.activeBackground1': '#2b2b2b33',
+-	'editorIndentGuide.background1': '#D3D3D3',
++	'editorIndentGuide.background1': '#2b2b2b14',
+-	'editorLineNumber.activeForeground': '#171184',
++	'editorLineNumber.activeForeground': '#2b2b2b',
+-	'editorLineNumber.foreground': '#6E7681',
++	'editorLineNumber.foreground': '#8f8f8f',
+-	'editorOverviewRuler.border': '#E5E5E5',
+-	'editorSuggestWidget.background': '#F8F8F8',
+-	'editorWidget.background': '#F8F8F8',
++	'editorOverviewRuler.border': '#00000000',
++	'editorSuggestWidget.background': '#ececec',
++	'editorWidget.background': '#ececec',
+-	'errorForeground': '#F85149',
++	'errorForeground': '#b03a30',
+-	'focusBorder': '#005FB8',
++	'focusBorder': '#5f5f5f',
+-	'foreground': '#3B3B3B',
++	'foreground': '#2b2b2b',
+-	'icon.foreground': '#3B3B3B',
++	'icon.foreground': '#2b2b2b',
+-	'input.background': '#FFFFFF',
+-	'input.border': '#CECECE',
++	'input.background': '#e7e7e7',
++	'input.border': '#00000000',
+-	'input.foreground': '#3B3B3B',
++	'input.foreground': '#2b2b2b',
+-	'input.placeholderForeground': '#767676',
++	'input.placeholderForeground': '#737373',
+-	'inputOption.activeBackground': '#BED6ED',
+-	'inputOption.activeBorder': '#005FB8',
++	'inputOption.activeBackground': '#d6d6d6',
++	'inputOption.activeBorder': '#5f5f5f',
+-	'inputOption.activeForeground': '#000000',
++	'inputOption.activeForeground': '#2b2b2b',
+-	'keybindingLabel.foreground': '#3B3B3B',
++	'keybindingLabel.foreground': '#2b2b2b',
+-	'list.activeSelectionBackground': '#E8E8E8',
++	'list.activeSelectionBackground': '#d6d6d6',
+-	'list.activeSelectionForeground': '#000000',
++	'list.activeSelectionForeground': '#2b2b2b',
+-	'list.activeSelectionIconForeground': '#000000',
++	'list.activeSelectionIconForeground': '#5f5f5f',
+-	'list.focusAndSelectionOutline': '#005FB8',
+-	'list.hoverBackground': '#F2F2F2',
+-	'menu.border': '#CECECE',
+-	'menu.selectionBackground': '#005FB8',
+-	'menu.selectionForeground': '#ffffff',
++	'list.focusAndSelectionOutline': '#5f5f5f',
++	'list.hoverBackground': '#dfdfdf',
++	'menu.border': '#00000000',
++	'menu.selectionBackground': '#d6d6d6',
++	'menu.selectionForeground': '#2b2b2b',
+-	'notebook.cellBorderColor': '#E5E5E5',
++	'notebook.cellBorderColor': '#2b2b2b1a',
+-	'notebook.selectedCellBackground': '#C8DDF150',
+-	'notificationCenterHeader.background': '#FFFFFF',
++	'notebook.selectedCellBackground': '#d6d6d6',
++	'notificationCenterHeader.background': '#ececec',
+-	'notificationCenterHeader.foreground': '#3B3B3B',
++	'notificationCenterHeader.foreground': '#2b2b2b',
+-	'notifications.background': '#FFFFFF',
+-	'notifications.border': '#E5E5E5',
++	'notifications.background': '#ececec',
++	'notifications.border': '#00000000',
+-	'notifications.foreground': '#3B3B3B',
++	'notifications.foreground': '#2b2b2b',
+-	'panel.background': '#F8F8F8',
+-	'panel.border': '#E5E5E5',
++	'panel.background': '#efefef',
++	'panel.border': '#00000000',
+-	'panelInput.border': '#E5E5E5',
++	'panelInput.border': '#00000000',
+-	'panelTitle.activeBorder': '#005FB8',
++	'panelTitle.activeBorder': '#5f5f5f',
+-	'panelTitle.activeForeground': '#3B3B3B',
++	'panelTitle.activeForeground': '#2b2b2b',
+-	'panelTitle.inactiveForeground': '#3B3B3B',
++	'panelTitle.inactiveForeground': '#5f5f5f',
+-	'peekViewEditor.matchHighlightBackground': '#BB800966',
+-	'peekViewResult.background': '#FFFFFF',
+-	'peekViewResult.matchHighlightBackground': '#BB800966',
+-	'pickerGroup.border': '#E5E5E5',
+-	'pickerGroup.foreground': '#8B949E',
++	'peekViewEditor.matchHighlightBackground': '#e5b85c3d',
++	'peekViewResult.background': '#ececec',
++	'peekViewResult.matchHighlightBackground': '#e5b85c3d',
++	'pickerGroup.border': '#00000000',
++	'pickerGroup.foreground': '#5f5f5f',
+-	'ports.iconRunningProcessForeground': '#369432',
++	'ports.iconRunningProcessForeground': '#2e7a44',
+-	'progressBar.background': '#005FB8',
+-	'quickInput.background': '#F8F8F8',
++	'progressBar.background': '#5f5f5f',
++	'quickInput.background': '#ececec',
+-	'quickInput.foreground': '#3B3B3B',
++	'quickInput.foreground': '#2b2b2b',
+-	'searchEditor.textInputBorder': '#CECECE',
++	'searchEditor.textInputBorder': '#00000000',
+-	'settings.dropdownBackground': '#FFFFFF',
++	'settings.dropdownBackground': '#ececec',
+-	'settings.dropdownBorder': '#CECECE',
++	'settings.dropdownBorder': '#00000000',
+-	'settings.headerForeground': '#1F1F1F',
+-	'settings.modifiedItemIndicator': '#BB800966',
++	'settings.headerForeground': '#2b2b2b',
++	'settings.modifiedItemIndicator': '#8f6f21',
+-	'settings.numberInputBorder': '#CECECE',
++	'settings.numberInputBorder': '#00000000',
+-	'settings.textInputBorder': '#CECECE',
++	'settings.textInputBorder': '#00000000',
+-	'sideBar.background': '#F8F8F8',
+-	'sideBar.border': '#E5E5E5',
++	'sideBar.background': '#efefef',
++	'sideBar.border': '#00000000',
+-	'sideBar.foreground': '#3B3B3B',
++	'sideBar.foreground': '#2b2b2b',
+-	'sideBarSectionHeader.background': '#F8F8F8',
+-	'sideBarSectionHeader.border': '#E5E5E5',
++	'sideBarSectionHeader.background': '#efefef',
++	'sideBarSectionHeader.border': '#00000000',
+-	'sideBarSectionHeader.foreground': '#3B3B3B',
++	'sideBarSectionHeader.foreground': '#2b2b2b',
+-	'sideBarTitle.foreground': '#3B3B3B',
+-	'statusBar.background': '#F8F8F8',
+-	'statusBar.border': '#E5E5E5',
+-	'statusBar.debuggingBackground': '#FD716C',
+-	'statusBar.debuggingForeground': '#000000',
+-	'statusBar.focusBorder': '#005FB8',
+-	'statusBar.foreground': '#3B3B3B',
+-	'statusBar.noFolderBackground': '#F8F8F8',
++	'sideBarTitle.foreground': '#5f5f5f',
++	'statusBar.background': '#efefef',
++	'statusBar.border': '#00000000',
++	'statusBar.debuggingBackground': '#2b2b2b',
++	'statusBar.debuggingForeground': '#f6f6f6',
++	'statusBar.focusBorder': '#5f5f5f',
++	'statusBar.foreground': '#5f5f5f',
++	'statusBar.noFolderBackground': '#efefef',
+-	'statusBarItem.compactHoverBackground': '#CCCCCC',
++	'statusBarItem.compactHoverBackground': '#e7e7e7',
+-	'statusBarItem.errorBackground': '#C72E0F',
++	'statusBarItem.errorBackground': '#b03a30',
+-	'statusBarItem.focusBorder': '#005FB8',
+-	'statusBarItem.hoverBackground': '#B8B8B850',
++	'statusBarItem.focusBorder': '#5f5f5f',
++	'statusBarItem.hoverBackground': '#dfdfdf',
+-	'statusBarItem.prominentBackground': '#6E768166',
++	'statusBarItem.prominentBackground': '#dfdfdf',
+-	'statusBarItem.remoteBackground': '#005FB8',
+-	'statusBarItem.remoteForeground': '#FFFFFF',
+-	'tab.activeBackground': '#FFFFFF',
+-	'tab.activeBorder': '#F8F8F8',
+-	'tab.activeBorderTop': '#005FB8',
+-	'tab.activeForeground': '#3B3B3B',
+-	'tab.border': '#E5E5E5',
+-	'tab.hoverBackground': '#FFFFFF',
+-	'tab.inactiveBackground': '#F8F8F8',
+-	'tab.inactiveForeground': '#868686',
++	'statusBarItem.remoteBackground': '#dfdfdf',
++	'statusBarItem.remoteForeground': '#2b2b2b',
++	'tab.activeBackground': '#f6f6f6',
++	'tab.activeBorder': '#00000000',
++	'tab.activeBorderTop': '#5f5f5f',
++	'tab.activeForeground': '#2b2b2b',
++	'tab.border': '#00000000',
++	'tab.hoverBackground': '#e0e0e0',
++	'tab.inactiveBackground': '#e9e9e9',
++	'tab.inactiveForeground': '#5f5f5f',
+-	'tab.lastPinnedBorder': '#D4D4D4',
++	'tab.lastPinnedBorder': '#00000000',
+-	'tab.selectedBackground': '#ffffffa5',
++	'tab.selectedBackground': '#d6d6d6',
+-	'tab.selectedBorderTop': '#68a3da',
++	'tab.selectedBorderTop': '#5f5f5f',
+-	'tab.selectedForeground': '#333333b3',
++	'tab.selectedForeground': '#2b2b2b',
+-	'tab.unfocusedActiveBorder': '#F8F8F8',
++	'tab.unfocusedActiveBorder': '#00000000',
+-	'tab.unfocusedActiveBorderTop': '#E5E5E5',
++	'tab.unfocusedActiveBorderTop': '#5f5f5f',
+-	'tab.unfocusedHoverBackground': '#F8F8F8',
++	'tab.unfocusedHoverBackground': '#e0e0e0',
+-	'terminal.foreground': '#3B3B3B',
++	'terminal.foreground': '#2b2b2b',
+-	'terminal.inactiveSelectionBackground': '#E5EBF1',
+-	'terminal.tab.activeBorder': '#005FB8',
+-	'terminalCursor.foreground': '#005FB8',
++	'terminal.inactiveSelectionBackground': '#2b2b2b0d',
++	'terminal.tab.activeBorder': '#5f5f5f',
++	'terminalCursor.foreground': '#2b2b2b',
+-	'textBlockQuote.background': '#F8F8F8',
++	'textBlockQuote.background': '#ececec',
+-	'textBlockQuote.border': '#E5E5E5',
++	'textBlockQuote.border': '#00000000',
+-	'textCodeBlock.background': '#F8F8F8',
++	'textCodeBlock.background': '#ececec',
+-	'textLink.activeForeground': '#005FB8',
+-	'textLink.foreground': '#005FB8',
++	'textLink.activeForeground': '#2b2b2b',
++	'textLink.foreground': '#2b2b2b',
+-	'textPreformat.background': '#0000001F',
++	'textPreformat.background': '#2b2b2b0d',
+-	'textPreformat.foreground': '#3B3B3B',
++	'textPreformat.foreground': '#2b2b2b',
+-	'textSeparator.foreground': '#21262D',
++	'textSeparator.foreground': '#2b2b2b1a',
+-	'titleBar.activeBackground': '#F8F8F8',
+-	'titleBar.activeForeground': '#1E1E1E',
+-	'titleBar.border': '#E5E5E5',
+-	'titleBar.inactiveBackground': '#F8F8F8',
++	'titleBar.activeBackground': '#efefef',
++	'titleBar.activeForeground': '#2b2b2b',
++	'titleBar.border': '#00000000',
++	'titleBar.inactiveBackground': '#efefef',
+-	'titleBar.inactiveForeground': '#8B949E',
++	'titleBar.inactiveForeground': '#5f5f5f',
+-	'welcomePage.tileBackground': '#F3F3F3',
+-	'widget.border': '#E5E5E5'
++	'welcomePage.tileBackground': '#ececec',
++	'widget.border': '#00000000'
+ };
+ 
+ export interface IWorkbenchTheme {
