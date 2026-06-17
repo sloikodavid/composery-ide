@@ -1,0 +1,45 @@
+<div class="auth-head">
+  <div class="auth-crumbs">
+    <span class="crumb" aria-current="step">Sign in</span>
+  </div>
+  <div class="auth-status" data-status aria-live="polite">{{ERROR}}</div>
+</div>
+<div class="auth-fields">
+  <div class="auth-stage" data-stage data-button="Sign in">
+    <label class="sr-only" for="password">Password</label>
+    <input
+      class="auth-input"
+      id="password"
+      name="password"
+      type="password"
+      placeholder="Password"
+      autocomplete="current-password"
+      autocorrect="off"
+      autocapitalize="off"
+      spellcheck="false"
+      autofocus
+      required
+    />
+  </div>
+</div>
+<button class="submit-button" type="submit">
+  <svg
+    class="submit-icon"
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+    focusable="false"
+  >
+    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+    <path class="submit-login-arrow" d="M10 17 15 12 10 7" />
+    <path class="submit-login-line" d="M3 12h12" />
+  </svg>
+  <span>Sign in</span>
+</button>
+{{CLOUD_SIGN_IN}} {{CHANGE_PASSWORD_LINK}}

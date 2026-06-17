@@ -1,0 +1,174 @@
+@import "./brand.css";
+
+@font-face {
+  font-family: "Inter";
+  src: url("../media/inter.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  /* No blue/grey flash over buttons, links and inputs when tapped - the
+	   pressed states below are the only press feedback these pages give. */
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  width: 100%;
+}
+
+* {
+  scrollbar-color: var(--composery-scrollbar) var(--composery-scrollbar-track);
+}
+
+::selection {
+  background: var(--composery-selection);
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--composery-scrollbar-track);
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 2px solid var(--composery-scrollbar-track);
+  border-radius: 999px;
+  background: var(--composery-scrollbar);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--composery-scrollbar-hover);
+}
+
+*::-webkit-scrollbar-thumb:active {
+  background: var(--composery-scrollbar-active);
+}
+
+*::-webkit-scrollbar-corner,
+*::-webkit-resizer {
+  background: var(--composery-scrollbar-track);
+}
+
+body {
+  margin: 0;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-foreground);
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+  font-feature-settings:
+    "liga" 1,
+    "calt" 1;
+  font-optical-sizing: auto;
+  font-variation-settings: "opsz" 17;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  letter-spacing: -0.009em;
+  line-height: 20px;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+input,
+button,
+select,
+textarea {
+  font: inherit;
+}
+
+/* 16px floor only where focus zooms the viewport (iOS/Android); desktop
+   inputs stay at the page's text size like the website's. */
+@media (hover: none), (pointer: coarse) {
+  input:not([type="hidden"]),
+  select,
+  textarea {
+    font-size: max(16px, 1em);
+  }
+}
+
+a {
+  color: inherit;
+}
+
+/* Inline content links: the website's .link treatment (app/globals.css) -
+   foreground text, primary-coloured underline, fade on hover. */
+.link {
+  color: var(--vscode-foreground);
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: var(--vscode-button-background);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3.5px;
+  transition: opacity 200ms ease-out;
+}
+
+.link:hover {
+  opacity: 0.8;
+}
+
+.link:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+
+.stack .link {
+  display: inline-block;
+  margin-top: 20px;
+}
+
+.page {
+  box-sizing: border-box;
+  display: grid;
+  height: 100%;
+  overflow: auto;
+  place-items: center;
+  padding: max(24px, env(safe-area-inset-top, 0px)) max(24px, env(safe-area-inset-right, 0px))
+    max(24px, env(safe-area-inset-bottom, 0px)) max(24px, env(safe-area-inset-left, 0px));
+  -webkit-overflow-scrolling: touch;
+  width: 100%;
+}
+
+.stack {
+  animation: page-fade-in 220ms ease-out both;
+  text-align: center;
+  width: min(100%, 368px);
+}
+
+/* Content settles in with a clean fade, like the website's .page-fade-in. */
+@keyframes page-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stack {
+    animation: none;
+  }
+}
+
+h1 {
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+  font-optical-sizing: auto;
+  font-variation-settings: "opsz" 28;
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  margin: 0 0 22px;
+  text-wrap: balance;
+}
+
+p {
+  line-height: 20px;
+  margin: 0;
+  text-wrap: pretty;
+}

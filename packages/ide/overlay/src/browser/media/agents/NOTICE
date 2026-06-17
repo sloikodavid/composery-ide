@@ -1,0 +1,16 @@
+Agent logos shown on the Composery welcome "Set up an AI coding agent" cards.
+
+Each file is the logo or icon of an independent third party, bundled only to
+identify that agent on its launch card (nominative use). All names and logos are
+trademarks of their respective owners; their inclusion here does not imply any
+affiliation with or endorsement by those owners.
+
+  claude-code.svg  Claude Code     - Anthropic
+  codex.svg     Codex           - OpenAI
+  opencode.svg  OpenCode        - opencode.ai
+  hermes.svg    Hermes Agent    - Nous Research
+  pi.svg        Pi              - earendil-works
+
+These files are the original marks. The welcome card tints them at display time
+to the theme accent with a CSS mask (product.diff); the files themselves are left
+unmodified.

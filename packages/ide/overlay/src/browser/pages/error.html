@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="style-src 'self'; script-src 'self'; manifest-src 'self'; img-src 'self' data:; font-src 'self' data:;"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f6f6f6" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#171717" media="(prefers-color-scheme: dark)" />
+    <title>{{ERROR_TITLE}} - {{APP_NAME}}</title>
+    <!-- ICO first with explicit sizes, adaptive SVG last with sizes="any":
+		     Chromium picks an unsized or later-listed ICO over the SVG and the
+		     tab icon stops following the colour scheme. The scheme-pinned pair
+		     is what favicon.js swaps the link to, so the icon follows a scheme
+		     change live instead of only across a reload. -->
+    <link rel="icon" href="{{COMPOSERY_STATIC_BASE}}/src/browser/media/favicon.ico" type="image/x-icon" sizes="32x32" />
+    <link
+      rel="icon"
+      href="{{COMPOSERY_STATIC_BASE}}/src/browser/media/favicon.svg"
+      type="image/svg+xml"
+      sizes="any"
+      data-light="{{COMPOSERY_STATIC_BASE}}/src/browser/media/favicon-light.svg"
+      data-dark="{{COMPOSERY_STATIC_BASE}}/src/browser/media/favicon-dark.svg"
+    />
+    <link rel="manifest" href="{{BASE}}/manifest.json" crossorigin="use-credentials" />
+    <link href="{{COMPOSERY_STATIC_BASE}}/src/browser/pages/global.css" rel="stylesheet" />
+    <meta id="composery-options" data-settings="{{OPTIONS}}" />
+  </head>
+  <body>
+    <main class="page">
+      <section class="stack" aria-labelledby="error-title">
+        <h1 id="error-title">{{ERROR_HEADER}}</h1>
+        <p>{{ERROR_BODY}}</p>
+        <a class="link" href="{{BASE}}{{TO}}">Go home</a>
+      </section>
+    </main>
+    <script src="{{COMPOSERY_STATIC_BASE}}/src/browser/pages/favicon.js"></script>
+  </body>
+</html>
