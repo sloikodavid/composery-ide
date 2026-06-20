@@ -1,0 +1,44 @@
+@font-face {
+	font-family: "Inter";
+	src: url("./inter.woff2") format("woff2");
+	font-weight: 100 900;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: "Geist Mono";
+	src: url("./geist-mono.woff2") format("woff2");
+	font-weight: 100 900;
+	font-style: normal;
+	font-display: swap;
+}
+
+/* Override VS Code's per-OS UI stacks (src/vs/workbench/browser/media/style.css)
+   at equal specificity. Loaded after workbench.css, so this wins. */
+.monaco-workbench.mac,
+.monaco-workbench.windows,
+.monaco-workbench.linux {
+	font-family:
+		-apple-system, BlinkMacSystemFont, "Inter", "Segoe UI",
+		system-ui, sans-serif;
+	font-feature-settings:
+		"liga" 1,
+		"calt" 1;
+	font-optical-sizing: auto;
+	font-variation-settings: "opsz" 14;
+	-webkit-font-smoothing: antialiased;
+	letter-spacing: -0.004em;
+	-moz-osx-font-smoothing: grayscale;
+	text-rendering: optimizeLegibility;
+}
+
+/* The monospace custom property feeds everything VS Code renders monospaced that
+   does not read editor.fontFamily (e.g. some tree/inline contexts). */
+.monaco-workbench.mac,
+.monaco-workbench.windows,
+.monaco-workbench.linux {
+	--monaco-monospace-font:
+		"Geist Mono", Menlo, Consolas, "Ubuntu Mono", "Liberation Mono",
+		"Courier New", monospace;
+}

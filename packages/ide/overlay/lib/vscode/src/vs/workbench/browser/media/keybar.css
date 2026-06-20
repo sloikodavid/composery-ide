@@ -1,0 +1,74 @@
+/*---------------------------------------------------------------------------------------------
+ * Composery Keybar - the keys a soft keyboard cannot produce, docked above it.
+ * The bar shows while the keyboard is up, and while a terminal holds focus; layout.ts
+ * reserves exactly that height out of the grid (see keybar.ts), so it costs nothing
+ * otherwise.
+ * Keys are drawn as toolbar buttons, not keycaps: the titlebar's own action-label
+ * treatment (actionbar.css - flat, no border, cornerRadius-medium, hover/active fill).
+ *--------------------------------------------------------------------------------------------*/
+
+.monaco-workbench .composery-keybar {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	/* Above the workbench grid, which spans the container. */
+	z-index: 10;
+	box-sizing: border-box;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	padding: 3px 4px;
+	background-color: var(--vscode-editorWidget-background);
+	border-top: 1px solid var(--vscode-widget-border, var(--vscode-editorWidget-border));
+	overflow: hidden;
+}
+
+.monaco-workbench .composery-keybar-row {
+	display: grid;
+	/* Eight columns pairs every key with the one above it: Home/End cap the horizontal
+	 * axis directly over the arrows, PgUp over PgDn. */
+	grid-template-columns: repeat(8, 1fr);
+	gap: 2px;
+	flex: 1 1 0;
+	min-height: 0;
+}
+
+.monaco-workbench .composery-keybar-key {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 0;
+	border-radius: var(--vscode-cornerRadius-medium);
+	color: var(--vscode-foreground);
+	font-size: 12px;
+	white-space: nowrap;
+	/* Keys shrink below their label in a narrow window - clip instead of spilling out. */
+	overflow: hidden;
+	cursor: pointer;
+	user-select: none;
+	-webkit-user-select: none;
+	touch-action: manipulation;
+}
+
+.monaco-workbench .composery-keybar-key:active {
+	background-color: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground));
+}
+
+.monaco-workbench .composery-keybar-key .codicon {
+	font-size: 16px;
+}
+
+/* Sticky modifier armed for the next key. */
+.monaco-workbench .composery-keybar-key.checked {
+	color: var(--vscode-inputOption-activeForeground);
+	background-color: var(--vscode-inputOption-activeBackground);
+	box-shadow: inset 0 0 0 1px var(--vscode-inputOption-activeBorder, transparent);
+}
+
+/* Locked (double-tapped) modifier - persists until tapped off; underline marks the
+ * difference from a one-shot, which otherwise looks identical. */
+.monaco-workbench .composery-keybar-key.locked {
+	text-decoration: underline;
+	text-underline-offset: 3px;
+}

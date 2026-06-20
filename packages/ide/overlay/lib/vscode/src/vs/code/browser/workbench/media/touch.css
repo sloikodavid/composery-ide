@@ -1,0 +1,437 @@
+/*
+ * Touch-pointer workbench styles - the touch half of the two small-screen gates (any touch device,
+ * any screen size). Gate: (hover: none), (any-pointer: coarse). Mirrored - but not importable - in
+ * touchGate.ts and shell.js; keep the touch query in sync.
+ */
+
+.keybindings-editor > .keybindings-body {
+	position: relative;
+}
+
+/*
+ * Rubber-band containment (any touch device). Views like the Welcome page scroll
+ * through a DomScrollableElement whose panes are overflow:hidden and scrolled
+ * programmatically - a finger drag over them is not owned by any scroll handler,
+ * so iOS rubber-bands the whole page instead and the workbench's scroll-reset
+ * (window.ts, on the visualViewport bounce) snaps it back: content teleports.
+ * overscroll-behavior on the root and on every custom scroll surface keeps the
+ * bounce from chaining out to the document, so no view can drag the page. Applied
+ * at the root and on .monaco-scrollable-element so it holds for every IDE view,
+ * not just Welcome. Reasoned for iOS, not device-tested.
+ */
+@media (hover: none), (any-pointer: coarse) {
+	html,
+	body {
+		overscroll-behavior: none;
+	}
+
+	.monaco-workbench .monaco-scrollable-element {
+		overscroll-behavior: contain;
+	}
+}
+
+/*
+ * Selection drag handles (touchSelectionHandles.ts): the collapsed caret and both range
+ * ends, for the editor and the terminal alike. The browser cannot provide these - its
+ * selection UI aims at the focused element, and neither host renders its text there (the
+ * editor focuses a hidden one-pixel input, the terminal a hidden textarea). Visibility and
+ * placement are driven from JS, which only shows them for touch pointers; the handles hang
+ * off .monaco-workbench in client coordinates, because the panes that own selections clip
+ * their overflow and a grip hangs below the line it marks.
+ */
+.composery-touch-caret-handle {
+	background: var(--vscode-editorCursor-foreground);
+	border: 2px solid var(--vscode-editor-background);
+	border-radius: 999px;
+	box-shadow: 0 1px 4px rgb(0 0 0 / 35%);
+	box-sizing: border-box;
+	height: 22px;
+	left: 0;
+	margin-left: -11px;
+	margin-top: 0;
+	pointer-events: auto;
+	position: absolute;
+	top: 0;
+	touch-action: none;
+	width: 22px;
+	/* Above the workbench parts, below the menus and dialogs (2500+) that act on a selection. */
+	z-index: 2000;
+}
+
+.composery-touch-caret-handle::before {
+	background: var(--vscode-editorCursor-foreground);
+	bottom: 18px;
+	content: "";
+	height: 18px;
+	left: 8px;
+	position: absolute;
+	width: 2px;
+}
+
+/* Range handles are mirrored teardrops whose tips anchor at the selection edges. */
+.composery-touch-range-handle-start,
+.composery-touch-range-handle-end {
+	margin-top: 0;
+}
+
+.composery-touch-range-handle-start {
+	border-radius: 999px 0 999px 999px;
+	/* The sharp top-right corner is the selection tip. */
+	margin-left: -22px;
+}
+
+.composery-touch-range-handle-end {
+	border-radius: 0 999px 999px 999px;
+	/* The sharp top-left corner is the selection tip. */
+	margin-left: 0;
+}
+
+/* At the pane's left edge the start handle's body would hang over whatever sits
+   beside it. Mirror it so the tip stays on the selection edge and the body opens
+   rightwards instead. */
+.composery-touch-range-handle-start.composery-touch-range-handle-flipped {
+	border-radius: 0 999px 999px 999px;
+	margin-left: 0;
+}
+
+.composery-touch-range-handle-start::before,
+.composery-touch-range-handle-end::before {
+	content: none;
+}
+
+.keybindings-editor > .keybindings-body > .keybindings-table-container {
+	overflow-x: auto;
+	overflow-y: hidden;
+	overscroll-behavior-x: contain;
+	scrollbar-width: none;
+}
+
+.keybindings-editor
+	> .keybindings-body
+	> .keybindings-table-container::-webkit-scrollbar {
+	display: none;
+}
+
+.keybindings-editor > .keybindings-body > .keybindings-table-container > .monaco-table {
+	min-width: 920px;
+}
+
+.keybindings-editor
+	> .keybindings-body
+	> .composery-keybindings-scrollbar {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	height: 10px;
+	background: var(--vscode-scrollbar-background);
+	z-index: 20;
+}
+
+.keybindings-editor
+	> .keybindings-body
+	> .composery-keybindings-scrollbar.hidden {
+	display: none;
+}
+
+.keybindings-editor
+	> .keybindings-body
+	> .composery-keybindings-scrollbar
+	> .slider {
+	position: absolute;
+	top: 0;
+	left: 0;
+	height: 10px;
+	min-width: 20px;
+	background: var(--vscode-scrollbarSlider-background);
+	contain: strict;
+}
+
+.keybindings-editor
+	> .keybindings-body
+	> .composery-keybindings-scrollbar
+	> .slider:hover {
+	background: var(--vscode-scrollbarSlider-hoverBackground);
+}
+
+.keybindings-editor
+	> .keybindings-body
+	> .composery-keybindings-scrollbar
+	> .slider.active {
+	background: var(--vscode-scrollbarSlider-activeBackground);
+}
+
+/*
+ * Scroll affordances a mouse gets from hover/wheel that a finger does not - native panning for
+ * overflowing lists/tables, and horizontal scrollbars kept visible since there is no hover.
+ */
+@media (hover: none), (any-pointer: coarse) {
+	.monaco-list.mouse-support .monaco-list-row,
+	.workbench-suggest-widget .monaco-list .monaco-list-row {
+		touch-action: pan-x pan-y;
+	}
+
+	.settings-editor
+		.monaco-split-view2.horizontal
+		> .monaco-scrollable-element
+		> .split-view-container,
+	.profiles-editor
+		> .monaco-split-view2.horizontal
+		> .monaco-scrollable-element
+		> .split-view-container {
+		touch-action: pan-y;
+	}
+
+	.keybindings-editor > .keybindings-body > .keybindings-table-container {
+		touch-action: pan-y;
+	}
+
+	.settings-editor
+		.monaco-split-view2.horizontal
+		> .monaco-scrollable-element
+		> .scrollbar.horizontal,
+	.profiles-editor
+		> .monaco-split-view2.horizontal
+		> .monaco-scrollable-element
+		> .scrollbar.horizontal {
+		opacity: 1 !important;
+		pointer-events: auto !important;
+		transition: none !important;
+	}
+}
+
+/*
+ * Native-feel chrome under a finger: no WebView tap flash (the workbench draws its own pressed
+ * states) and no iOS long-press callout - both inherit from the root, with callout re-allowed
+ * only where Safari text selection deliberately is (editor lines, see upstream style.ts).
+ */
+@media (hover: none), (any-pointer: coarse) {
+	.monaco-workbench {
+		-webkit-tap-highlight-color: transparent;
+		-webkit-touch-callout: none;
+	}
+
+	.monaco-workbench .monaco-editor .view-lines {
+		-webkit-touch-callout: default;
+	}
+
+	/*
+	 * The editor's hidden edit-context input (native EditContext div, or the legacy
+	 * textarea) stays focused and mirrors the model selection into a real DOM selection
+	 * so screen readers and the OS know where the caret is. iOS then paints its own inert
+	 * selection grab-handles for that DOM selection, wherever screenReaderSupport has
+	 * parked the element: at the editor's top-left when the caret is scrolled out of view
+	 * (_renderAtTopLeft), or over the selected text when it is on-screen - so a select-all
+	 * or a keybar Ctrl+C (which refreshes that selection to copy) sprays the knobs across
+	 * the selection. Both are the same hidden input; both are redundant with the
+	 * model-driven caret/range handles the editor draws itself (the shared grips in
+	 * touchSelectionHandles.ts). Suppress the native selection UI at the source: copy/cut
+	 * read the editor model
+	 * (ensureClipboardGetsEditorData), not this selection, and the input's caret is
+	 * already transparent, so nothing visible is lost. Harmless on Android (it draws no
+	 * such handles); reasoned for iOS, not device-tested.
+	 *
+	 * The same shims must not take a touch either, and that one is device-verified. Each is
+	 * hit-testable where it is parked - the editor's on the cursor's line, xterm's under the
+	 * cell touched last - so a press landing on one targets an editable element, which the
+	 * gesture layer deliberately leaves to the OS text toolbar: the hold silently did
+	 * nothing at all on exactly the spot the finger had just tapped. They are focused
+	 * through code, never by pointing at them, so none of them needs pointer events.
+	 */
+	.monaco-workbench .monaco-editor .native-edit-context,
+	.monaco-workbench .monaco-editor .inputarea,
+	.xterm-helper-textarea {
+		-webkit-user-select: none;
+		user-select: none;
+		pointer-events: none;
+	}
+
+}
+
+/*
+ * Inline actions a mouse reveals on hover that a finger never can - row and header action
+ * bars, quick pick item buttons, the settings gear - stay visible on touch. Their Tap
+ * handlers preventDefault and the list/tree widgets stand down on consumed taps
+ * (touch.diff), so a tap on a button never also runs the row. !important:
+ * this sheet is a head <link> and the workbench injects its own styles later, so ties lose.
+ */
+@media (hover: none), (any-pointer: coarse) {
+	/* Quick pick item buttons (Open to Side, remove from history, ...) */
+	.quick-input-list
+		.quick-input-list-entry
+		.quick-input-list-entry-action-bar
+		.action-label,
+	.quick-input-list
+		.quick-input-list-entry
+		.quick-input-list-entry-action-bar
+		.monaco-custom-toggle,
+	.quick-input-tree
+		.quick-input-tree-entry
+		.quick-input-tree-entry-action-bar
+		.action-label,
+	.quick-input-tree
+		.quick-input-tree-entry
+		.quick-input-tree-entry-action-bar
+		.monaco-custom-toggle {
+		display: flex !important;
+	}
+
+	/* View pane headers (collapse all, new file, ...) - collapsed panes keep them
+	 * hidden, matching the upstream hover reveal. */
+	.monaco-pane-view .pane > .pane-header.expanded > .actions {
+		display: initial !important;
+	}
+
+	/* Sidebar composite headers */
+	.monaco-workbench .viewlet .split-view-view > .header .actions {
+		width: initial !important;
+		flex: 1 !important;
+	}
+
+	/* Extension-contributed tree views (custom inline actions) */
+	.customview-tree
+		.monaco-list
+		.monaco-list-row
+		.custom-view-tree-node-item
+		.actions {
+		display: block !important;
+	}
+
+	.customview-tree
+		.monaco-list.horizontal-scrolling
+		.monaco-list-row:has(.actions .action-item)
+		.custom-view-tree-node-item
+		.actions {
+		position: relative;
+		right: var(--list-scroll-right-offset, 0px);
+		background-color: var(--vscode-list-hoverBackground);
+		padding-left: 4px;
+	}
+
+	/* Source control rows (stage, discard, ...) */
+	.scm-view .monaco-list .monaco-list-row .resource-group > .actions,
+	.scm-view
+		.monaco-list
+		.monaco-list-row
+		.resource
+		> .name
+		> .monaco-icon-label
+		> .actions,
+	.scm-view .monaco-list .monaco-list-row .history-item > .actions,
+	.scm-view
+		.monaco-list
+		.monaco-list-row
+		.history-item-change
+		> .label-container
+		> .monaco-icon-label
+		> .actions {
+		display: block !important;
+	}
+
+	/* Open editors close buttons */
+	.open-editors .monaco-list .monaco-list-row > .monaco-action-bar {
+		visibility: visible !important;
+	}
+
+	/* Debug panes (restart frame, remove watch expression, ...) */
+	.debug-pane .monaco-list-row .monaco-action-bar {
+		display: initial !important;
+	}
+
+	/* Markers quick fix - the action bar replaces the lightbulb marker icon, as it
+	 * does on hover. */
+	.markers-panel .monaco-tl-contents .actions .monaco-action-bar {
+		display: block !important;
+	}
+
+	.markers-panel .monaco-list-row .monaco-tl-contents > .marker-icon.quickFix {
+		display: none !important;
+	}
+
+	/* Comments panel */
+	.comments-panel .comments-panel-container .actions {
+		display: block !important;
+	}
+
+	/* Keybindings editor row actions (edit, reset, ...) */
+	.keybindings-editor
+		> .keybindings-body
+		> .keybindings-table-container
+		.monaco-table-tr
+		.monaco-table-td
+		.actions
+		.monaco-action-bar {
+		display: flex !important;
+	}
+
+	/* Notification toasts and the notifications centre (clear, configure, do not
+	 * disturb). Upstream also reveals these on list focus and on the focused row, so
+	 * on touch they were reachable - but only by spending a tap on the toast to
+	 * reveal the button, before the tap that presses it. */
+	.monaco-workbench
+		.notifications-list-container
+		.notification-list-item
+		.notification-list-item-toolbar-container {
+		display: block !important;
+	}
+
+	/* Search result rows (dismiss match, replace) */
+	.search-view .monaco-list .monaco-list-row .monaco-action-bar {
+		display: inline-block !important;
+	}
+
+	/* Settings list/object rows (edit, remove) */
+	.settings-editor
+		> .settings-body
+		.settings-tree-container
+		.setting-item.setting-item-list
+		.setting-list-row
+		.monaco-action-bar {
+		display: block !important;
+	}
+
+	/* Terminal tabs (split, kill) */
+	.monaco-workbench .pane-body.integrated-terminal .tabs-list .actions {
+		display: block !important;
+	}
+
+	/* Settings gear (reset, copy setting ID, ...) */
+	.settings-editor
+		> .settings-body
+		.settings-tree-container
+		.setting-toolbar-container
+		> .monaco-toolbar
+		.codicon {
+		opacity: 1 !important;
+	}
+}
+
+/*
+ * Notebook insert-cell toolbars a mouse reveals on hover that a finger never can. A cell's
+ * title toolbar (run/split/delete/move-up-down) and its gutter run button already reveal on
+ * .focused - a tap focuses the cell - so cell reordering and the rest need nothing here; only
+ * the between-cell "+ Code / + Markdown" insert bars are hover-only with no focus fallback. The
+ * top insert bar (one per notebook) shows whenever the notebook is editable; each cell's
+ * insert-below bar shows when that cell is focused, so a tap reveals where the next cell lands.
+ * NotebookCellList extends the base list widget, so the consumed-tap stand-down from
+ * touch.diff already keeps a toolbar tap off the cell underneath it. !important:
+ * head <link>, workbench styles inject later and win ties.
+ */
+@media (hover: none), (any-pointer: coarse) {
+	.monaco-workbench
+		.notebookOverlay.notebook-editor-editable
+		.cell-list-top-cell-toolbar-container {
+		opacity: 1 !important;
+	}
+
+	.monaco-workbench
+		.notebookOverlay.notebook-editor-editable
+		> .cell-list-container
+		> .monaco-list
+		> .monaco-scrollable-element
+		> .monaco-list-rows
+		> .monaco-list-row.focused
+		.cell-bottom-toolbar-container {
+		opacity: 1 !important;
+	}
+}

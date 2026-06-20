@@ -1,0 +1,458 @@
+/*
+ * Narrow-viewport workbench styles - the screen-size half of the two small-screen gates (any small
+ * screen, mouse or touch). Gate: (max-width: 768px). Mirrored - but not importable - in narrowGate.ts
+ * and shell.js; keep the breakpoint in sync.
+ */
+
+:root {
+	--composery-viewport-height: 100dvh;
+	--composery-safe-area-top: env(safe-area-inset-top, 0px);
+	--composery-safe-area-right: env(safe-area-inset-right, 0px);
+	--composery-safe-area-bottom: env(safe-area-inset-bottom, 0px);
+	--composery-safe-area-left: env(safe-area-inset-left, 0px);
+
+	/* One home for the overlay inset used by every narrow popup/dialog/menu below, so the
+	 * 16px gap and safe-area composition can't drift across the copies (resolved at use time,
+	 * so --composery-viewport-height stays live as shell.js updates it). */
+	--composery-overlay-max-width: calc(
+		100vw - var(--composery-safe-area-left) - var(--composery-safe-area-right) - 16px
+	);
+	--composery-overlay-max-height: calc(
+		var(--composery-viewport-height) - var(--composery-safe-area-top) -
+			var(--composery-safe-area-bottom) - 16px
+	);
+}
+
+.composery-feature-picker {
+	display: none;
+	box-sizing: border-box;
+	width: calc(100% - 48px);
+	height: 36px;
+	margin: 0 24px 8px;
+	padding: 0 10px;
+	border: 1px solid var(--vscode-dropdown-border, transparent);
+	border-radius: 4px;
+	color: var(--vscode-dropdown-foreground);
+	background: var(--vscode-dropdown-background);
+	font: inherit;
+}
+
+.composery-feature-picker.visible {
+	display: block;
+}
+
+/* PartLayout applies this only to touch devices whose visible height cannot fit
+ * the part title, footer, and a usable content row. */
+.monaco-workbench .part.composery-compact-footer > .footer {
+	display: none !important;
+}
+
+@media (max-width: 768px) {
+	/* The narrow titlebar's left region holds exactly the logo (in the native
+	 * app doubling as the Back control) and the menubar's overflow button.
+	 * Upstream sizes the region as a 20% grow-2 flex band; pin it instead so
+	 * the command center can't crowd the two controls. The width cannot be
+	 * content-derived: the menubar is a zero-basis flexer whose allocated
+	 * width is what tells MenuBar to collapse into the overflow button
+	 * (narrow.diff), so it must stay extrinsically sized.
+	 * 77px = 35px logo + 4px menubar margin + the 38px overflow button
+	 * (16px codicon + upstream's 8px menubar-item side paddings + border) -
+	 * anything less spills the button under the command center. */
+	.monaco-workbench
+		.part.titlebar
+		> .titlebar-container.has-center
+		> .titlebar-left {
+		width: 77px !important;
+		min-width: 77px !important;
+		flex: 0 0 77px !important;
+	}
+
+	/* Upstream swaps the menubar's 4px margin for `padding: 4px 5px` in fullscreen -
+	 * and a phone browser is detected as fullscreen essentially always - which shifts
+	 * the 38px overflow button 5px right and clips it against the 77px pin above.
+	 * Normalize to the non-fullscreen geometry so the pin's math holds in both states. */
+	.monaco-workbench.fullscreen
+		.part.titlebar
+		> .titlebar-container.has-center
+		> .titlebar-left
+		> .menubar:not(.compact) {
+		margin-left: 4px;
+		padding: 0;
+	}
+
+	/* VS Code's custom horizontal scrollbar responds to wheels but its hidden
+	 * content node never receives a native finger pan. Feature tables can be
+	 * wider than a phone, so let the browser own that axis on narrow screens. */
+	.extension-editor .feature-body-content {
+		overflow-x: auto !important;
+		-webkit-overflow-scrolling: touch;
+		overscroll-behavior-x: contain;
+		touch-action: pan-x pan-y !important;
+	}
+
+	/* The extension header's name row is a nowrap flex line upstream; a long name
+	 * plus badges just clips at the header's hidden overflow on a phone. Give the name
+	 * its own full-width line so it wraps at word boundaries. break-word, not anywhere:
+	 * the name is a flex:0 (basis 0) item, and overflow-wrap:anywhere drops its
+	 * min-content to one character, collapsing the item to a one-letter-per-line column. */
+	.extension-editor > .header > .details > .title {
+		flex-wrap: wrap;
+	}
+
+	.extension-editor > .header > .details > .title > .name {
+		flex-basis: 100%;
+		white-space: normal;
+		overflow-wrap: break-word;
+	}
+
+	html,
+	body {
+		height: 100%;
+		overflow: hidden;
+		-webkit-text-size-adjust: 100%;
+		text-size-adjust: 100%;
+		touch-action: pan-x pan-y pinch-zoom;
+		width: 100%;
+	}
+
+	.monaco-workbench {
+		max-height: var(--composery-viewport-height);
+		max-width: 100vw;
+		overflow: hidden;
+	}
+
+	.monaco-workbench.web {
+		overscroll-behavior: contain;
+		touch-action: pan-x pan-y;
+	}
+
+	/* The upstream Welcome page decides when to add width-constrained from a stale
+	 * workbench dimension during narrow part transitions. Make the responsive layout
+	 * a viewport invariant so portrait never opens as a horizontally pannable desktop
+	 * canvas. */
+	.monaco-workbench
+		.part.editor
+		> .content
+		.gettingStartedContainer
+		.gettingStartedSlideCategories
+		> .gettingStartedCategoriesContainer {
+		box-sizing: border-box;
+		grid-template-columns: minmax(0, 1fr) !important;
+		grid-template-rows: auto min-content minmax(min-content, auto) min-content !important;
+		grid-template-areas: "header" "left-column" "right-column" "footer" !important;
+		max-width: 100%;
+		/* Breathing room around the whole column on a phone: the header needs to
+		 * clear the tab bar rather than start against it, and the last card needs
+		 * somewhere to land at the end of the scroll. The roomy desktop layout
+		 * never hits this narrow gate. */
+		padding: 56px 20px;
+	}
+
+	.monaco-workbench
+		.part.editor
+		> .content
+		.gettingStartedContainer
+		.composery-agent-grid {
+		grid-template-columns: minmax(0, 1fr) !important;
+		max-width: 100% !important;
+	}
+
+	/* Upstream hides the whole welcome header (product name + subtitle) once
+	 * width-constrained. The narrow grid above allocates a header row on purpose:
+	 * branding stays visible on a phone. */
+	.monaco-workbench
+		.part.editor
+		> .content
+		.gettingStartedContainer
+		.gettingStartedSlideCategories
+		> .gettingStartedCategoriesContainer
+		> .header {
+		display: block !important;
+	}
+
+	.quick-input-widget {
+		box-sizing: border-box !important;
+		left: max(8px, var(--composery-safe-area-left)) !important;
+		right: max(8px, var(--composery-safe-area-right)) !important;
+		width: auto !important;
+		max-width: none !important;
+		max-height: var(--composery-overlay-max-height) !important;
+	}
+
+	.monaco-dialog-box {
+		box-sizing: border-box !important;
+		width: min(420px, calc(100vw - 32px)) !important;
+		min-width: 0 !important;
+		max-width: calc(100vw - 32px) !important;
+		max-height: calc(
+			var(--composery-viewport-height) -
+				var(--composery-safe-area-top) -
+				var(--composery-safe-area-bottom) - 32px
+		) !important;
+	}
+
+	.monaco-dialog-modal-block {
+		box-sizing: border-box !important;
+		left: 0 !important;
+		right: 0 !important;
+		width: 100vw !important;
+		padding: var(--composery-safe-area-top)
+			max(16px, var(--composery-safe-area-right))
+			var(--composery-safe-area-bottom)
+			max(16px, var(--composery-safe-area-left));
+	}
+
+	.monaco-dialog-modal-block .dialog-shadow {
+		width: min(420px, 100%);
+		max-width: 100%;
+	}
+
+	.monaco-dialog-box .dialog-message-row,
+	.monaco-dialog-box .dialog-footer-row {
+		min-width: 0;
+	}
+
+	.monaco-dialog-box:not(.align-vertical)
+		> .dialog-buttons-row
+		> .dialog-buttons {
+		margin-left: 0;
+	}
+
+	.monaco-dialog-box > .dialog-buttons-row > .dialog-buttons {
+		min-width: 0;
+	}
+
+	.monaco-dialog-box > .dialog-buttons-row > .dialog-buttons > .monaco-button {
+		min-width: 0;
+		max-width: 100%;
+	}
+
+	.monaco-modal-editor-block
+		.modal-editor-action-container
+		.action-item:has(.action-label.codicon-screen-full) {
+		display: none !important;
+	}
+
+	.monaco-modal-editor-block[data-composery-narrow-maximized="true"]
+		> .modal-editor-resizable {
+		box-sizing: border-box !important;
+		left: max(8px, var(--composery-safe-area-left)) !important;
+		right: max(8px, var(--composery-safe-area-right)) !important;
+		width: auto !important;
+		max-width: var(--composery-overlay-max-width) !important;
+	}
+
+	.monaco-modal-editor-block[data-composery-narrow-maximized="true"]
+		.modal-editor-header {
+		grid-template-columns: auto minmax(0, 1fr) auto auto;
+	}
+
+	.monaco-modal-editor-block[data-composery-narrow-maximized="true"]
+		.modal-editor-title,
+	.monaco-modal-editor-block[data-composery-narrow-maximized="true"]
+		.modal-editor-action-container {
+		min-width: 0;
+	}
+
+	.monaco-modal-editor-block[data-composery-narrow-maximized="true"]
+		.modal-editor-action-container,
+	.monaco-modal-editor-block[data-composery-narrow-maximized="true"]
+		.modal-editor-action-container
+		> .monaco-toolbar,
+	.monaco-modal-editor-block[data-composery-narrow-maximized="true"]
+		.modal-editor-action-container
+		> .monaco-toolbar
+		> .monaco-action-bar {
+		width: auto;
+		justify-content: flex-end;
+	}
+
+	.monaco-modal-editor-block[data-composery-narrow-maximized="true"]
+		.modal-editor-action-container
+		.monaco-action-bar
+		> .actions-container {
+		width: auto;
+		margin-left: 0;
+		margin-right: 0;
+		justify-content: flex-end;
+	}
+
+	/*
+	 * Force-fullscreened on a narrow viewport: the per-part maximize toggle (bottom panel, secondary
+	 * side bar) is meaningless - the part already fills the screen and there is no un-fullscreen - so
+	 * hide it, the same way the modal editor's screen-full action is hidden above. The primary side
+	 * bar has no native maximize button, so there is nothing to hide there.
+	 */
+	.monaco-action-bar .action-item:has(.action-label.codicon-panel-maximize),
+	.monaco-action-bar .action-item:has(.action-label.codicon-panel-restore),
+	.monaco-action-bar .action-item:has(.action-label.codicon-auxiliarybar-maximize),
+	.monaco-action-bar .action-item:has(.action-label.codicon-auxiliarybar-restore) {
+		display: none !important;
+	}
+
+	/* Popups, dropdowns and the settings header fit within the narrow viewport. */
+	.context-view:not(.monaco-menu-container),
+	.action-list-submenu-panel,
+	.monaco-select-box-dropdown-container.visible,
+	.monaco-hover:not(.hidden),
+	.editor-widget,
+	.suggest-details-container,
+	.suggest-widget,
+	.workbench-suggest-widget,
+	.parameter-hints-widget,
+	.rename-box,
+	.find-widget {
+		box-sizing: border-box !important;
+		max-width: var(--composery-overlay-max-width) !important;
+		max-height: var(--composery-overlay-max-height) !important;
+	}
+
+	/* Menus own a DomScrollableElement upstream. Constrain its measured content instead of the
+	 * overflow-hidden context-view wrapper, otherwise the wrapper clips a full-height menu without
+	 * giving the inner scrollable a usable scroll range. */
+	.context-view.monaco-menu-container .monaco-menu,
+	.monaco-menu-container .monaco-menu {
+		box-sizing: border-box !important;
+		max-width: var(--composery-overlay-max-width) !important;
+		max-height: var(--composery-overlay-max-height) !important;
+	}
+
+	.monaco-workbench > .notifications-center,
+	.monaco-workbench > .notifications-toasts {
+		box-sizing: border-box !important;
+		left: max(8px, var(--composery-safe-area-left)) !important;
+		right: max(8px, var(--composery-safe-area-right)) !important;
+		width: auto !important;
+		max-width: var(--composery-overlay-max-width) !important;
+		max-height: var(--composery-overlay-max-height) !important;
+	}
+
+	/* The workbench itself already sits above the on-screen keyboard and the edge-to-edge
+	 * bottom inset (touch.diff), so a plain offset is enough here. */
+	.monaco-workbench > .notifications-center {
+		bottom: 8px !important;
+		top: auto !important;
+	}
+
+	.monaco-workbench > .notifications-toasts {
+		bottom: 8px !important;
+		top: auto !important;
+		overflow: hidden;
+	}
+
+	.monaco-workbench > .notifications-center.top-right,
+	.monaco-workbench > .notifications-toasts.top-right {
+		bottom: auto !important;
+		top: max(8px, var(--composery-safe-area-top)) !important;
+	}
+
+	.monaco-workbench
+		> .notifications-center
+		.notifications-list-container,
+	.monaco-workbench
+		> .notifications-toasts
+		.notification-toast-container
+		> .notification-toast,
+	.monaco-workbench
+		> .notifications-toasts
+		.notifications-list-container {
+		max-width: 100% !important;
+		max-height: inherit !important;
+	}
+
+	.monaco-workbench
+		> .notifications-center
+		.notifications-list-container
+		.monaco-list,
+	.monaco-workbench
+		> .notifications-center
+		.notifications-list-container
+		.monaco-scrollable-element,
+	.monaco-workbench
+		> .notifications-toasts
+		.notifications-list-container
+		.monaco-list,
+	.monaco-workbench
+		> .notifications-toasts
+		.notifications-list-container
+		.monaco-scrollable-element {
+		max-height: inherit !important;
+	}
+
+	.monaco-select-box-dropdown-container.visible
+		> .select-box-dropdown-list-container {
+		min-height: 0;
+		max-height: inherit;
+	}
+
+	.settings-editor
+		> .settings-header
+		> .settings-header-controls
+		.settings-target-container,
+	.settings-editor
+		> .settings-header
+		> .settings-header-controls
+		.settings-tabs-widget,
+	.settings-editor
+		> .settings-header
+		> .settings-header-controls
+		.settings-tabs-widget
+		> .monaco-action-bar {
+		min-width: 0;
+		max-width: 100%;
+	}
+
+	.settings-editor
+		> .settings-header
+		> .settings-header-controls
+		.settings-tabs-widget
+		> .monaco-action-bar
+		> .actions-container {
+		overflow: hidden;
+	}
+
+	.settings-editor
+		> .settings-header
+		> .settings-header-controls
+		.settings-tabs-widget
+		> .monaco-action-bar
+		> .actions-container
+		> .action-item {
+		min-width: 0;
+		flex: 0 1 auto;
+	}
+
+	.settings-editor
+		> .settings-header
+		> .settings-header-controls
+		.settings-tabs-widget
+		> .monaco-action-bar
+		> .actions-container
+		> .action-item
+		.action-label {
+		display: block;
+		max-width: 32vw;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.settings-editor
+		> .settings-header
+		> .settings-header-controls
+		.settings-tabs-widget
+		> .monaco-action-bar
+		.action-label.folder-settings
+		.action-title,
+	.settings-editor
+		> .settings-header
+		> .settings-header-controls
+		.settings-tabs-widget
+		> .monaco-action-bar
+		.action-label.folder-settings
+		.action-details {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+}
