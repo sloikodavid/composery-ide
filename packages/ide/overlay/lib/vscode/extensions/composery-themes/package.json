@@ -1,0 +1,32 @@
+{
+	"name": "composery-themes",
+	"displayName": "Composery Themes",
+	"description": "Composery's light and dark color themes, matching the shared brand palette.",
+	"version": "0.1.0",
+	"publisher": "composery",
+	"license": "MIT",
+	"categories": ["Themes"],
+	"engines": {
+		"vscode": "*"
+	},
+	"contributes": {
+		"themes": [
+			{
+				"id": "Composery Light",
+				"label": "Composery Light",
+				"uiTheme": "vs",
+				"path": "./themes/composery-light.json"
+			},
+			{
+				"id": "Composery Dark",
+				"label": "Composery Dark",
+				"uiTheme": "vs-dark",
+				"path": "./themes/composery-dark.json"
+			}
+		]
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/sloikodavid/composery-ide.git"
+	}
+}
