@@ -1,0 +1,28 @@
+{
+	"name": "composery-api",
+	"displayName": "Composery API",
+	"description": "Create and revoke keys for this instance's automation API.",
+	"version": "0.1.0",
+	"publisher": "composery",
+	"license": "Apache-2.0",
+	"categories": ["Other"],
+	"engines": {
+		"vscode": "*"
+	},
+	"extensionKind": ["workspace"],
+	"activationEvents": ["onCommand:composery.manageApiKeys"],
+	"main": "./extension.js",
+	"contributes": {
+		"commands": [
+			{
+				"command": "composery.manageApiKeys",
+				"title": "Manage API Keys",
+				"category": "Composery"
+			}
+		]
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/sloikodavid/composery-ide.git"
+	}
+}

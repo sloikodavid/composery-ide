@@ -1,0 +1,27 @@
+{
+	"name": "composery-agents",
+	"displayName": "Composery Agents",
+	"description": "CLI-first setup for popular terminal AI coding agents, with optional owner-provided editor extensions.",
+	"version": "0.1.0",
+	"publisher": "composery",
+	"license": "Apache-2.0",
+	"categories": ["Other"],
+	"engines": {
+		"vscode": "*"
+	},
+	"main": "./extension.js",
+	"activationEvents": ["onCommand:composery.installAgent"],
+	"contributes": {
+		"commands": [
+			{
+				"command": "composery.installAgent",
+				"title": "Set Up an AI Coding Agent",
+				"category": "Composery"
+			}
+		]
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/sloikodavid/composery-ide.git"
+	}
+}

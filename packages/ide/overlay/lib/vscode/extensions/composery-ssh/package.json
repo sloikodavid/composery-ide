@@ -1,0 +1,28 @@
+{
+	"name": "composery-ssh",
+	"displayName": "Composery SSH",
+	"description": "Connect a device or an AI agent to this instance over SSH.",
+	"version": "0.1.0",
+	"publisher": "composery",
+	"license": "Apache-2.0",
+	"categories": ["Other"],
+	"engines": {
+		"vscode": "*"
+	},
+	"extensionKind": ["workspace"],
+	"activationEvents": ["onCommand:composery.connectOverSsh"],
+	"main": "./extension.js",
+	"contributes": {
+		"commands": [
+			{
+				"command": "composery.connectOverSsh",
+				"title": "Connect Over SSH",
+				"category": "Composery"
+			}
+		]
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/sloikodavid/composery-ide.git"
+	}
+}

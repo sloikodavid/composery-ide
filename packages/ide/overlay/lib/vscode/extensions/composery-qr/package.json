@@ -1,0 +1,19 @@
+{
+	"name": "composery-qr",
+	"displayName": "Composery QR",
+	"description": "Show a scannable QR code of this instance's URL in an editor tab.",
+	"version": "0.1.0",
+	"publisher": "composery",
+	"license": "Apache-2.0",
+	"categories": ["Other"],
+	"engines": {
+		"vscode": "*"
+	},
+	"extensionKind": ["workspace"],
+	"activationEvents": ["onCommand:composery.showQr"],
+	"main": "./extension.js",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/sloikodavid/composery-ide.git"
+	}
+}

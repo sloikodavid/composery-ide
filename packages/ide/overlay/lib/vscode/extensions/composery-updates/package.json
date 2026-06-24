@@ -1,0 +1,28 @@
+{
+	"name": "composery-updates",
+	"displayName": "Composery Updates",
+	"description": "Checks for Composery updates and notifies you when a newer release is available.",
+	"version": "0.1.0",
+	"publisher": "composery",
+	"license": "Apache-2.0",
+	"categories": ["Other"],
+	"engines": {
+		"vscode": "*"
+	},
+	"extensionKind": ["workspace"],
+	"activationEvents": ["onStartupFinished"],
+	"main": "./extension.js",
+	"contributes": {
+		"commands": [
+			{
+				"command": "composery.checkForUpdates",
+				"title": "Check for Updates",
+				"category": "Composery"
+			}
+		]
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/sloikodavid/composery-ide.git"
+	}
+}
