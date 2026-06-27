@@ -1,0 +1,42 @@
+#!/bin/sh
+# wl-copy(1) shim backed by the browser clipboard (see xclip for the rationale).
+set -u
+
+target=
+clear=0
+text=
+have_text=0
+while [ $# -gt 0 ]; do
+	case "$1" in
+		-c|--clear) clear=1 ;;
+		-t|--type) [ $# -gt 1 ] && { shift; target="$1"; } ;;
+		--type=*) target="${1#*=}" ;;
+		-s|--seat) [ $# -gt 1 ] && shift ;;
+		-o|--paste-once|-f|--foreground|-n|--trim-newline|-p|--primary) ;;
+		--version) echo "wl-copy 2.2.1 (composery clipboard bridge)"; exit 0 ;;
+		-h|--help) echo "Usage: wl-copy [options] [text...] | wl-copy --clear"; exit 0 ;;
+		--) shift; break ;;
+		-*) ;;
+		*) break ;;
+	esac
+	shift
+done
+[ $# -gt 0 ] && { have_text=1; text="$*"; }
+
+# No integrated-terminal pipe means no browser clipboard to reach.
+[ -n "${VSCODE_IPC_HOOK_CLI:-}" ] || exit 1
+
+if [ "$clear" = 1 ]; then
+	printf '' | code -c
+	exit 0
+fi
+
+case "$target" in
+	image/*) exec code --clipboard-image-in ;;
+esac
+
+if [ "$have_text" = 1 ]; then
+	printf '%s' "$text" | code -c
+else
+	code -c
+fi

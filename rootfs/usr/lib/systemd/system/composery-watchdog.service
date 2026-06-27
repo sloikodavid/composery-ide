@@ -1,0 +1,12 @@
+[Unit]
+Description=Restart the container when a previously healthy Composery stops serving
+After=persistence.service ide.service caddy.service
+
+[Service]
+Type=simple
+ExecStart=/opt/composery/watchdog.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,23 @@
+[Default Applications]
+x-scheme-handler/http=composery-url-handler.desktop
+x-scheme-handler/https=composery-url-handler.desktop
+inode/directory=composery-text-editor.desktop
+text/plain=composery-text-editor.desktop
+text/markdown=composery-text-editor.desktop
+text/x-markdown=composery-text-editor.desktop
+application/json=composery-text-editor.desktop
+application/xml=composery-text-editor.desktop
+text/xml=composery-text-editor.desktop
+application/x-yaml=composery-text-editor.desktop
+application/yaml=composery-text-editor.desktop
+text/yaml=composery-text-editor.desktop
+application/toml=composery-text-editor.desktop
+application/x-toml=composery-text-editor.desktop
+text/css=composery-text-editor.desktop
+text/csv=composery-text-editor.desktop
+text/html=composery-text-editor.desktop
+text/javascript=composery-text-editor.desktop
+application/sql=composery-text-editor.desktop
+application/x-shellscript=composery-text-editor.desktop
+text/x-shellscript=composery-text-editor.desktop
+text/x-script.sh=composery-text-editor.desktop

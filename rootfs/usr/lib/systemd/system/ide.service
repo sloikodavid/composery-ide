@@ -1,0 +1,24 @@
+[Unit]
+Description=Composery IDE
+After=persistence.service
+Wants=persistence.service
+
+[Service]
+Type=simple
+User=user
+WorkingDirectory=/home/user
+Environment=HOME=/home/user
+Environment=USER=user
+Environment=LOGNAME=user
+Environment=SHELL=/bin/bash
+# Composery IDE settings bridged by entrypoint.sh (systemd starts services clean).
+EnvironmentFile=-/run/composery.env
+# '+' runs as root (despite User=) to create the user's XDG_RUNTIME_DIR.
+ExecStartPre=+/usr/bin/install -d -m 0755 /run/user
+ExecStartPre=+/usr/bin/install -d -m 0700 -o user -g user /run/user/1000
+ExecStart=/opt/composery/ide.sh
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

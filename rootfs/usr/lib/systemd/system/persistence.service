@@ -1,0 +1,20 @@
+[Unit]
+Description=Composery filesystem persistence daemon
+After=local-fs.target
+Before=ide.service
+
+[Service]
+Type=simple
+ExecStart=/opt/composery/bin/composery persistence daemon
+Restart=always
+RestartSec=1
+# Backstop only: the watch budget and bounded dirty queue in the daemon are
+# the real bound, so normal usage sits far below these. Percentages so one unit
+# fits every host, from a 1 GB Fly VM to an 8+ GB cloud server: MemoryHigh
+# throttles allocation (soft, reclaim under pressure) at 20%, MemoryMax OOM-kills
+# the cgroup well above that at 50% and Restart=always brings it back.
+MemoryHigh=20%
+MemoryMax=50%
+
+[Install]
+WantedBy=multi-user.target

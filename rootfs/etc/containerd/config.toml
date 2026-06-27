@@ -1,0 +1,15 @@
+# Where containerd keeps images and container snapshots.
+#
+# This file exists because `data-root` in /etc/docker/daemon.json does NOT cover
+# them. Docker Engine 29 and later default to the containerd image store, and
+# Docker documents the split plainly: "The data-root option does not affect image
+# and container data stored in /var/lib/containerd when using the containerd image
+# store." Setting only data-root moves volumes and daemon state - the small part -
+# and leaves every image layer on the root filesystem, which is the exact outcome
+# both engines need to avoid. See docs/persistence.md.
+#
+# `state` is deliberately left at its default (/run/containerd). It is runtime
+# state on tmpfs and must not survive a restart.
+version = 3
+
+root = "/data/containerd"

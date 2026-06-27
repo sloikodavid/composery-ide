@@ -1,0 +1,77 @@
+{
+	admin 127.0.0.1:2019
+	auto_https off
+	persist_config off
+	servers {
+		trusted_proxies static private_ranges
+		trusted_proxies_strict
+	}
+}
+
+# The interface this listens on, and the port behind it.
+#
+# The default is every interface, which is what a bridged container wants: the
+# only way in is the port its deployment published. A deployment that puts the
+# container on the host's own network stack - so an owner can bind ordinary
+# server ports and reach them - has no such boundary, and this port would be
+# published along with them. Setting COMPOSERY_BIND to 127.0.0.1 there keeps the
+# editor reachable only through the proxy in front of it.
+{$COMPOSERY_BIND:}:{$PORT:8080} {
+	@root path /
+	redir @root /ide/ 308
+
+	@ide_without_slash path /ide
+	redir @ide_without_slash /ide/ 308
+
+	# Port applications are intentionally outside the installed IDE's scope.
+	handle /proxy/* {
+		reverse_proxy 127.0.0.1:{$COMPOSERY_IDE_PORT:8081}
+	}
+
+	handle /absproxy/* {
+		reverse_proxy 127.0.0.1:{$COMPOSERY_IDE_PORT:8081}
+	}
+
+	# Machine endpoints stay outside the workbench mount.
+	handle /_composery/healthz* {
+		reverse_proxy 127.0.0.1:{$COMPOSERY_IDE_PORT:8081}
+	}
+
+	handle /_composery/api/v1/* {
+		reverse_proxy 127.0.0.1:{$COMPOSERY_IDE_PORT:8081}
+	}
+
+	# SSH enrollment. Its own namespace, not a corner of the API: different
+	# protocol, different credential, different audience.
+	handle /_composery/ssh/* {
+		reverse_proxy 127.0.0.1:{$COMPOSERY_IDE_PORT:8081}
+	}
+
+	@root_files path /robots.txt /security.txt /.well-known/security.txt
+	handle @root_files {
+		reverse_proxy 127.0.0.1:{$COMPOSERY_IDE_PORT:8081}
+	}
+
+	# Root-only routes must not leak back in through the stripping workbench route.
+	@outside_ide path /ide/proxy /ide/proxy/* /ide/absproxy /ide/absproxy/* /ide/_composery/healthz* /ide/_composery/api/v1 /ide/_composery/api/v1/* /ide/_composery/ssh /ide/_composery/ssh/* /ide/robots.txt /ide/security.txt /ide/.well-known/security.txt
+	handle @outside_ide {
+		respond "Not found" 404
+	}
+
+	# The backend remains root-relative; this one boundary owns the public mount.
+	handle_path /ide/* {
+		reverse_proxy 127.0.0.1:{$COMPOSERY_IDE_PORT:8081} {
+			header_down Service-Worker-Allowed /ide/
+		}
+	}
+
+	# Add application handlers above this final not-found response.
+	handle {
+		respond "Not found" 404
+	}
+
+	# A bare empty 502 reads as "broken"; say what is actually happening.
+	handle_errors {
+		respond "Composery's IDE service is not reachable yet. It is likely still starting; if this persists, check the container logs." {err.status_code}
+	}
+}

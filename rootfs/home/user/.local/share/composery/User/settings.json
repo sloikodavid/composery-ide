@@ -1,0 +1,75 @@
+{
+	"telemetry.telemetryLevel": "off",
+	"security.workspace.trust.enabled": false,
+	"chat.disableAIFeatures": true,
+	"update.mode": "none",
+	"window.autoDetectColorScheme": true,
+	"window.autoDetectHighContrast": false,
+	"window.menuBarVisibility": "visible",
+	"workbench.activityBar.location": "bottom",
+	"workbench.panel.showLabels": false,
+	"workbench.navigationControl.enabled": false,
+	"workbench.editor.useModal": "off",
+	"workbench.editor.scrollToSwitchTabs": true,
+	"workbench.secondarySideBar.defaultVisibility": "hidden",
+	"workbench.iconTheme": null,
+	"breadcrumbs.enabled": false,
+	"files.exclude": {
+		"**/.DS_Store": false,
+		"**/.git": false,
+		"**/.hg": false,
+		"**/.svn": false,
+		"**/Thumbs.db": false
+	},
+	"search.exclude": {
+		"**/.DS_Store": true,
+		"**/.git": true,
+		"**/.hg": true,
+		"**/.svn": true,
+		"**/Thumbs.db": true
+	},
+	"explorer.compactFolders": false,
+	"scm.compactFolders": false,
+	"git.autofetch": true,
+	"git.enableSmartCommit": true,
+	"terminal.integrated.tabs.enabled": false,
+	"terminal.integrated.defaultProfile.linux": "bash",
+	"terminal.integrated.profiles.linux": {
+		"bash": {
+			"path": "bash",
+			"args": ["-l"]
+		}
+	},
+	"editor.wordWrap": "on",
+	"editor.scrollbar.vertical": "hidden",
+	"editor.minimap.enabled": false,
+	"editor.showFoldingControls": "always",
+	"editor.tabSize": 2,
+	"editor.scrollOnMiddleClick": true,
+	"editor.dragAndDrop": false,
+	"editor.cursorBlinking": "smooth",
+	"editor.linkedEditing": true,
+	"editor.wrapOnEscapedLineFeeds": true,
+	"editor.fontLigatures": true,
+	"editor.fontSize": 15,
+	"editor.lineHeight": 1.6,
+	"editor.fontFamily": "'Geist Mono', Menlo, Consolas, 'Ubuntu Mono', monospace",
+	"terminal.integrated.fontSize": 15,
+	"terminal.integrated.lineHeight": 1,
+	"terminal.integrated.fontFamily": "'Geist Mono', Menlo, Consolas, 'Ubuntu Mono', monospace",
+	"chat.editor.fontSize": 15,
+	"chat.fontSize": 15,
+	"chat.editor.fontFamily": "'Geist Mono', Menlo, Consolas, 'Ubuntu Mono', monospace",
+	"debug.console.fontSize": 15,
+	"debug.console.fontFamily": "'Geist Mono', Menlo, Consolas, 'Ubuntu Mono', monospace",
+	"scm.inputFontFamily": "'Geist Mono', Menlo, Consolas, 'Ubuntu Mono', monospace",
+	"markdown.preview.fontSize": 15,
+	"markdown.preview.lineHeight": 1.6,
+	"markdown.preview.fontFamily": "-apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, 'Ubuntu', 'Droid Sans', sans-serif",
+	"[markdown]": {
+		"editor.fontFamily": "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, 'Ubuntu', 'Droid Sans', sans-serif"
+	},
+	"[plaintext]": {
+		"editor.fontFamily": "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, 'Ubuntu', 'Droid Sans', sans-serif"
+	}
+}

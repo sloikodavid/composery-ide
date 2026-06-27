@@ -1,0 +1,29 @@
+#!/bin/sh
+# xsel(1) shim backed by the browser clipboard (see xclip for the rationale).
+set -u
+
+mode=out
+while [ $# -gt 0 ]; do
+	case "$1" in
+		-i|--input) mode=in ;;
+		-o|--output) mode=out ;;
+		-c|--clear) mode=clear ;;
+		-a|--append) mode=in ;;
+		-b|--clipboard|-p|--primary|-s|--secondary|-k|--keep|-x|--exchange|-n|--nodetach|-v|--verbose) ;;
+		-t|--selectionTimeout|-l|--logfile) [ $# -gt 1 ] && shift ;;
+		--version) echo "xsel version 1.2.0 (composery clipboard bridge)"; exit 0 ;;
+		-h|--help) echo "Usage: xsel [-i|-o|-c] [-b]"; exit 0 ;;
+		--) shift; break ;;
+		*) ;;
+	esac
+	shift
+done
+
+# No integrated-terminal pipe means no browser clipboard to reach.
+[ -n "${VSCODE_IPC_HOOK_CLI:-}" ] || exit 1
+
+case "$mode" in
+	out) exec code --clipboard-out ;;
+	in) exec code -c ;;
+	clear) printf '' | code -c ;;
+esac

@@ -1,0 +1,40 @@
+#!/bin/sh
+# wl-paste(1) shim backed by the browser clipboard (see xclip for the rationale).
+set -u
+
+list=0
+newline=1
+target=
+while [ $# -gt 0 ]; do
+	case "$1" in
+		-l|--list-types) list=1 ;;
+		-n|--no-newline) newline=0 ;;
+		-t|--type) [ $# -gt 1 ] && { shift; target="$1"; } ;;
+		--type=*) target="${1#*=}" ;;
+		-s|--seat) [ $# -gt 1 ] && shift ;;
+		-p|--primary) ;;
+		--version) echo "wl-paste 2.2.1 (composery clipboard bridge)"; exit 0 ;;
+		-h|--help) echo "Usage: wl-paste [-n] [-l] [-t type]"; exit 0 ;;
+		--) shift; break ;;
+		*) ;;
+	esac
+	shift
+done
+
+# No integrated-terminal pipe means no browser clipboard to reach.
+[ -n "${VSCODE_IPC_HOOK_CLI:-}" ] || exit 1
+
+if [ "$list" = 1 ]; then
+	text=$(code --clipboard-out 2>/dev/null || true)
+	image_bytes=$(code --clipboard-image-out 2>/dev/null | wc -c)
+	[ -n "$text" ] && printf 'text/plain\ntext/plain;charset=utf-8\nUTF8_STRING\nTEXT\nSTRING\n'
+	[ "${image_bytes:-0}" -gt 0 ] && echo image/png
+	exit 0
+fi
+
+case "$target" in
+	image/*) exec code --clipboard-image-out ;;
+esac
+code --clipboard-out
+[ "$newline" = 1 ] && printf '\n'
+exit 0

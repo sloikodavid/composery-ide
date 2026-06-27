@@ -1,0 +1,49 @@
+#!/bin/sh
+# xclip(1) shim that forwards the headless server's clipboard to the browser via
+# the `code` CLI pipe. Only the subset real tools use is implemented.
+set -u
+
+mode=in
+target=
+while [ $# -gt 0 ]; do
+	case "$1" in
+		-o|-out) mode=out ;;
+		-i|-in) mode=in ;;
+		-sel|-select|-selection) [ $# -gt 1 ] && shift ;;
+		-t|-target) [ $# -gt 1 ] && { shift; target="$1"; } ;;
+		-l|-loops|-d|-display) [ $# -gt 1 ] && shift ;;
+		-version|--version) echo "xclip version 0.13 (composery clipboard bridge)"; exit 0 ;;
+		-h|-help|--help) echo "Usage: xclip [-i|-o] [-selection clipboard] [-t target] [file...]"; exit 0 ;;
+		--) shift; break ;;
+		-*) ;;
+		*) break ;;
+	esac
+	shift
+done
+
+# No integrated-terminal pipe means no browser clipboard to reach; fail cleanly.
+[ -n "${VSCODE_IPC_HOOK_CLI:-}" ] || exit 1
+
+if [ "$mode" = out ]; then
+	case "$target" in
+		TARGETS)
+			text=$(code --clipboard-out 2>/dev/null || true)
+			image_bytes=$(code --clipboard-image-out 2>/dev/null | wc -c)
+			echo TARGETS
+			[ -n "$text" ] && printf 'UTF8_STRING\nSTRING\ntext/plain\ntext/plain;charset=utf-8\n'
+			[ "${image_bytes:-0}" -gt 0 ] && echo image/png
+			;;
+		image/*) exec code --clipboard-image-out ;;
+		*) exec code --clipboard-out ;;
+	esac
+	exit 0
+fi
+
+case "$target" in
+	image/*)
+		if [ $# -gt 0 ]; then cat "$@" | code --clipboard-image-in; else code --clipboard-image-in; fi
+		;;
+	*)
+		if [ $# -gt 0 ]; then cat "$@" | code -c; else code -c; fi
+		;;
+esac

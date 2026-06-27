@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Composery
+GenericName=URL Handler
+Comment=Open web links from Composery
+Exec=/opt/composery/ide/current/lib/vscode/bin/helpers/browser.sh %U
+Terminal=false
+NoDisplay=true
+StartupNotify=false
+MimeType=x-scheme-handler/http;x-scheme-handler/https;
