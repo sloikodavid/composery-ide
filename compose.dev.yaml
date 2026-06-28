@@ -1,0 +1,17 @@
+services:
+  composery:
+    build:
+      context: .
+      args:
+        COMPOSERY_BUILD_REVISION: ${COMPOSERY_BUILD_REVISION:-unknown}
+        COMPOSERY_BUILD_SOURCE: ${COMPOSERY_BUILD_SOURCE:-https://github.com/sloikodavid/composery-ide}
+        COMPOSERY_BUILD_VERSION: ${COMPOSERY_BUILD_VERSION:-unknown}
+    environment:
+      - COMPOSERY_DISABLE_AUTH=true
+    volumes:
+      - composery_data:/data
+    ports:
+      - "${PORT:-8080}:8080"
+
+volumes:
+  composery_data:
