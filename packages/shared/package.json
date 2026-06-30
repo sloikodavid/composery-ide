@@ -1,0 +1,21 @@
+{
+	"name": "shared",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./index.ts"
+	},
+	"scripts": {
+		"build": "node scripts/theme.mjs && node scripts/sync.mjs && node scripts/icons.mjs && node scripts/logo.mjs",
+		"check": "node scripts/theme.mjs --check && node scripts/sync.mjs --check",
+		"dev:colors": "node scripts/colors/server.mjs"
+	},
+	"devDependencies": {
+		"@vscode/codicons": "0.0.46-24",
+		"fontkit": "^2.0.4",
+		"lucide-static": "^1.28.0",
+		"png-to-ico": "^3.0.2",
+		"sharp": "catalog:"
+	}
+}

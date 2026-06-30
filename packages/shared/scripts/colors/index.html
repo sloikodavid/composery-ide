@@ -1,0 +1,4779 @@
+﻿<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Colors</title>
+		<link rel="stylesheet" href="/codicon.css" />
+		<style>
+			* {
+				box-sizing: border-box;
+			}
+			:root {
+				font:
+					13px/1.45 Inter,
+					ui-sans-serif,
+					system-ui,
+					sans-serif;
+				background: var(--background);
+				color: var(--foreground);
+			}
+			body {
+				display: flex;
+				flex-direction: column;
+				height: 100vh;
+				margin: 0;
+			}
+			button,
+			input {
+				font: inherit;
+			}
+			input[type="checkbox"] {
+				width: 14px;
+				height: 14px;
+				accent-color: var(--foreground);
+			}
+			button {
+				color: inherit;
+			}
+			.icon {
+				display: block;
+				width: 1em;
+				height: 1em;
+				flex: 0 0 auto;
+				fill: none;
+				stroke: currentColor;
+				stroke-width: 2;
+				stroke-linecap: round;
+				stroke-linejoin: round;
+			}
+			.icon-only {
+				display: inline-grid;
+				place-items: center;
+				line-height: 0;
+			}
+			.with-icon {
+				display: inline-flex;
+				align-items: center;
+				gap: 6px;
+			}
+			.toolbar {
+				flex-wrap: wrap;
+				position: sticky;
+				top: 0;
+				z-index: 10;
+				display: flex;
+				min-height: 54px;
+				align-items: center;
+				gap: 16px;
+				padding: 8px 14px;
+				border-bottom: 1px solid var(--border);
+				background: var(--muted);
+			}
+			h1 {
+				margin: 0 auto 0 0;
+				font-size: 16px;
+				font-weight: 650;
+			}
+			.segment {
+				display: flex;
+				gap: 2px;
+				padding: 3px;
+				border: 1px solid var(--border);
+				border-radius: 8px;
+				background: var(--background);
+			}
+			.segment button,
+			.primary {
+				min-height: 30px;
+				padding: 5px 10px;
+				border: 0;
+				border-radius: 5px;
+				background: transparent;
+				cursor: pointer;
+			}
+			.history {
+				display: flex;
+				gap: 2px;
+			}
+			.history button {
+				display: grid;
+				min-width: 30px;
+				min-height: 30px;
+				place-items: center;
+				padding: 0;
+				border: 0;
+				border-radius: 5px;
+				background: transparent;
+				color: var(--muted-foreground);
+				cursor: pointer;
+				font-size: 15px;
+			}
+			.history button:hover:not(:disabled) {
+				background: var(--selected);
+				color: var(--foreground);
+			}
+			.history button:disabled {
+				cursor: default;
+				opacity: 0.35;
+			}
+			.segment button[aria-pressed="true"] {
+				background: var(--selected);
+				color: var(--selected-foreground);
+				box-shadow: 0 0 0 1px var(--border);
+			}
+			.primary {
+				min-width: 64px;
+				background: var(--button);
+				color: var(--button-foreground);
+				font-weight: 650;
+			}
+			.primary:disabled {
+				cursor: default;
+				opacity: 0.45;
+			}
+			.layout {
+				display: grid;
+				grid-template-columns: 480px minmax(640px, 1fr);
+				flex: 1;
+				min-height: 0;
+			}
+			.controls {
+				overflow: auto;
+				scrollbar-gutter: stable;
+				padding: 16px 14px;
+				border-right: 1px solid var(--border);
+				background: var(--muted);
+			}
+			.group + .group {
+				margin-top: 22px;
+			}
+			.group h2 {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				gap: 8px;
+				margin: 0 0 7px;
+				color: var(--muted-foreground);
+				font-size: 11px;
+				font-weight: 650;
+				letter-spacing: 0.06em;
+				text-transform: uppercase;
+			}
+			.role {
+				display: grid;
+				grid-template-columns: minmax(0, 1fr) 26px 34px 94px 26px 22px;
+				align-items: center;
+				gap: 6px;
+				min-height: 34px;
+			}
+			.feature-row {
+				display: grid;
+				grid-template-columns: minmax(0, 1fr) auto;
+				align-items: center;
+				gap: 12px;
+				min-height: 42px;
+			}
+			.feature-copy {
+				min-width: 0;
+			}
+			.feature-copy b,
+			.feature-copy small {
+				display: block;
+			}
+			.feature-copy b {
+				font-size: 12px;
+				font-weight: 600;
+			}
+			.feature-copy small {
+				overflow: hidden;
+				color: var(--muted-foreground);
+				font-size: 10px;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+			input.feature-switch {
+				width: 34px;
+				height: 20px;
+				margin: 0;
+				appearance: none;
+				border: 1px solid var(--border);
+				border-radius: 999px;
+				background:
+					radial-gradient(
+						circle at 9px 50%,
+						var(--muted-foreground) 0 6px,
+						transparent 6.5px
+					),
+					var(--muted);
+				cursor: pointer;
+			}
+			input.feature-switch:checked {
+				background:
+					radial-gradient(
+						circle at 25px 50%,
+						var(--button-foreground) 0 6px,
+						transparent 6.5px
+					),
+					var(--button);
+			}
+			.role[hidden],
+			.group[hidden] {
+				display: none;
+			}
+			.area {
+				border: 1px solid var(--border);
+				border-radius: 8px;
+				color: var(--muted-foreground);
+				font-size: 9px;
+				font-weight: 650;
+				letter-spacing: 0.03em;
+				text-align: center;
+			}
+			.link {
+				position: relative;
+				display: grid;
+				width: 26px;
+				height: 22px;
+				place-items: center;
+				padding: 0;
+				border: 0;
+				border-radius: 5px;
+				background: transparent;
+				color: var(--muted-foreground);
+				cursor: pointer;
+				font-size: 11px;
+			}
+			.link .icon,
+			.reset .icon {
+				width: 14px;
+				height: 14px;
+			}
+			.link-count {
+				position: absolute;
+				right: -2px;
+				bottom: -2px;
+				display: grid;
+				min-width: 12px;
+				height: 12px;
+				place-items: center;
+				padding: 0 2px;
+				border: 1px solid var(--muted);
+				border-radius: 999px;
+				background: var(--foreground);
+				color: var(--background);
+				font-size: 8px;
+				font-weight: 700;
+				line-height: 1;
+			}
+			.link:hover {
+				background: var(--selected);
+				color: var(--foreground);
+			}
+			.link.loose {
+				color: var(--destructive);
+			}
+			.filter {
+				display: flex;
+				align-items: center;
+				gap: 6px;
+				color: var(--muted-foreground);
+			}
+			.plain {
+				min-height: 30px;
+				padding: 5px 10px;
+				border: 1px solid var(--border);
+				border-radius: 5px;
+				background: transparent;
+				cursor: pointer;
+			}
+			.plain:hover:not(:disabled) {
+				background: var(--selected);
+			}
+			.plain:disabled {
+				cursor: default;
+				opacity: 0.45;
+			}
+			#transfer {
+				width: min(680px, 90vw);
+				padding: 16px;
+				border: 1px solid var(--border);
+				border-radius: 10px;
+				background: var(--popover);
+				color: var(--popover-foreground);
+			}
+			#transfer::backdrop {
+				background: var(--overlay);
+			}
+			#transfer h2 {
+				margin: 0 0 10px;
+				font-size: 14px;
+			}
+			#transfer-text {
+				width: 100%;
+				height: 46vh;
+				padding: 10px;
+				border: 1px solid var(--field-border);
+				border-radius: 6px;
+				outline: none;
+				background: var(--background);
+				color: var(--foreground);
+				font:
+					12px/1.5 ui-monospace,
+					"SFMono-Regular",
+					Consolas,
+					monospace;
+				resize: vertical;
+			}
+			#transfer-status {
+				min-height: 20px;
+				margin: 8px 0 0;
+				color: var(--muted-foreground);
+			}
+			#transfer-status.error {
+				color: var(--destructive);
+			}
+			.transfer-actions {
+				display: flex;
+				justify-content: flex-end;
+				gap: 8px;
+				margin-top: 10px;
+			}
+			.role-name {
+				overflow: hidden;
+				color: var(--foreground);
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+			.swatch {
+				width: 34px;
+				height: 26px;
+				padding: 0;
+				border: 1px solid var(--border);
+				border-radius: 5px;
+				cursor: pointer;
+			}
+			.reset {
+				display: grid;
+				width: 22px;
+				height: 22px;
+				place-items: center;
+				padding: 0;
+				border: 0;
+				border-radius: 5px;
+				background: transparent;
+				color: var(--muted-foreground);
+				cursor: pointer;
+				font-size: 14px;
+			}
+			.reset:hover:not(:disabled) {
+				background: var(--selected);
+				color: var(--foreground);
+			}
+			.reset:disabled {
+				cursor: default;
+				opacity: 0.35;
+			}
+
+			/* Hex-first picker: the native one opens in RGB and cannot be told otherwise. */
+			#picker {
+				position: fixed;
+				inset: auto;
+				width: 264px;
+				margin: 0;
+				padding: 12px;
+				border: 1px solid var(--border);
+				border-radius: 8px;
+				background: var(--popover);
+				color: var(--popover-foreground);
+				box-shadow: 0 14px 40px
+					color-mix(in srgb, var(--overlay) 65%, transparent);
+			}
+			#picker .sv {
+				position: relative;
+				height: 176px;
+				border-radius: 5px;
+				cursor: crosshair;
+				touch-action: none;
+			}
+			#picker .sv i {
+				position: absolute;
+				width: 16px;
+				height: 16px;
+				border: 2px solid #ffffff;
+				border-radius: 50%;
+				box-shadow: 0 0 0 1px #00000080;
+				pointer-events: none;
+				translate: -50% -50%;
+			}
+			#picker input[type="range"] {
+				width: 100%;
+				height: 18px;
+				margin: 12px 0 0;
+				appearance: none;
+				border-radius: 9px;
+			}
+			#picker input[type="range"]::-webkit-slider-thumb {
+				width: 18px;
+				height: 18px;
+				appearance: none;
+				border: 3px solid #ffffff;
+				border-radius: 50%;
+				box-shadow: 0 0 0 1px #00000080;
+			}
+			#picker input[type="text"] {
+				width: 100%;
+				height: 32px;
+				margin-top: 12px;
+				font-size: 14px;
+				text-align: center;
+			}
+			input[type="text"] {
+				width: 94px;
+				height: 27px;
+				padding: 3px 6px;
+				border: 1px solid var(--field-border);
+				border-radius: 5px;
+				outline: none;
+				background: var(--background);
+				color: var(--foreground);
+				font:
+					12px/1.2 ui-monospace,
+					"SFMono-Regular",
+					Consolas,
+					monospace;
+			}
+			input[type="text"]:focus {
+				border-color: var(--ring);
+			}
+			input[type="text"].invalid {
+				border-color: var(--destructive);
+				color: var(--destructive);
+			}
+			#status {
+				min-height: 20px;
+				margin: 16px 0 0;
+				color: var(--muted-foreground);
+			}
+			#status.error {
+				color: var(--destructive);
+			}
+			.stage {
+				display: grid;
+				grid-template-rows: auto minmax(0, 1fr);
+				min-width: 0;
+				overflow: hidden;
+				padding: 24px;
+				background: var(--background);
+			}
+			/* Product previews. Their geometry and states follow the shipped web
+			   components and captured Composery workbench.
+			   data-token on the matching markup is the source of truth for locating
+			   a role and for the invariant that every editable role is visible. */
+			.preview-bar {
+				display: flex;
+				align-items: center;
+				gap: 10px;
+				min-width: 0;
+				margin-bottom: 10px;
+			}
+			.preview-tabs {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 3px;
+				padding: 3px;
+				border: 1px solid var(--border);
+				border-radius: 8px;
+				background: var(--muted);
+			}
+			.preview-tabs button {
+				min-height: 27px;
+				padding: 4px 9px;
+				border: 0;
+				border-radius: 5px;
+				background: transparent;
+				color: var(--muted-foreground);
+				cursor: pointer;
+			}
+			.preview-tabs button[aria-pressed="true"] {
+				background: var(--background);
+				color: var(--foreground);
+				box-shadow: 0 0 0 1px var(--border);
+			}
+			.preview-summary {
+				overflow: hidden;
+				margin-left: auto;
+				color: var(--muted-foreground);
+				font-size: 11px;
+				text-align: right;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+			}
+			.preview-frame {
+				position: relative;
+				min-width: 0;
+				min-height: 0;
+				height: 100%;
+			}
+			.product-preview {
+				position: relative;
+				width: 100%;
+				height: 100%;
+				min-height: 0;
+				overflow: hidden;
+				border: 1px solid var(--border);
+				border-radius: 10px;
+				box-shadow: 0 18px 55px
+					color-mix(in srgb, var(--overlay) 45%, transparent);
+			}
+			[data-token].token-hit {
+				position: relative;
+				z-index: 2;
+				outline: 2px solid var(--ring);
+				outline-offset: 2px;
+				box-shadow: 0 0 0 5px color-mix(in srgb, var(--ring) 20%, transparent);
+			}
+			.web-chart path.token-hit {
+				stroke-width: 8px;
+				filter: drop-shadow(0 0 4px var(--ring));
+			}
+			.role.active {
+				border-radius: 5px;
+				background: var(--selected);
+				box-shadow: 0 0 0 3px var(--selected);
+			}
+			.role-name {
+				min-width: 0;
+				padding: 0;
+				border: 0;
+				background: transparent;
+				text-align: left;
+				cursor: pointer;
+			}
+
+			/* Website: the real floating header, PageTemplate spacing, 2xl cards,
+			   compact controls, box rows, monitor, popover, toast, and dialog. */
+			.web-product {
+				display: flex;
+				flex-direction: column;
+				background: var(--background);
+				color: var(--foreground);
+				font:
+					13px/1.45 -apple-system,
+					BlinkMacSystemFont,
+					Inter,
+					"Segoe UI",
+					sans-serif;
+				letter-spacing: -0.009em;
+			}
+			.web-header {
+				display: grid;
+				grid-template-columns: 1fr auto 1fr;
+				width: calc(100% - 28px);
+				max-width: 900px;
+				height: 52px;
+				align-items: center;
+				gap: 16px;
+				margin: 0 auto;
+				padding: 0 11px 0 9px;
+				border: 1px solid var(--border);
+				border-top: 0;
+				border-radius: 0 0 16px 16px;
+				background: var(--header);
+				color: var(--header-foreground);
+				box-shadow: 0 2px 8px var(--shadow);
+			}
+			.product-logo {
+				display: inline-flex;
+				align-items: center;
+				gap: 6px;
+				justify-self: start;
+				padding: 0;
+				border: 0;
+				background: transparent;
+				color: inherit;
+				cursor: pointer;
+				font-size: 15px;
+				font-weight: 700;
+				letter-spacing: -0.025em;
+			}
+			.product-logo svg {
+				width: 22px;
+				height: 22px;
+				overflow: visible;
+			}
+			.product-mark {
+				display: inline-block;
+				width: 22px;
+				height: 22px;
+				flex: 0 0 auto;
+				background: currentColor;
+				mask: url("/icon.svg") center/contain no-repeat;
+			}
+			.web-nav {
+				display: flex;
+				gap: 2px;
+			}
+			.web-nav button {
+				height: 30px;
+				padding: 0 10px;
+				border: 0;
+				border-radius: 999px;
+				background: transparent;
+				color: var(--muted-foreground);
+				cursor: pointer;
+			}
+			.web-nav button:hover {
+				background: var(--hover);
+				color: var(--foreground);
+			}
+			.web-nav button.current {
+				background: var(--selected);
+				color: var(--selected-foreground);
+			}
+			.web-account {
+				display: flex;
+				align-items: center;
+				justify-content: end;
+				gap: 7px;
+			}
+			.web-icon-button,
+			.web-button {
+				display: inline-flex;
+				height: 30px;
+				align-items: center;
+				justify-content: center;
+				gap: 6px;
+				padding: 0 11px;
+				border: 1px solid transparent;
+				border-radius: 999px;
+				background: transparent;
+				color: inherit;
+				cursor: pointer;
+				font: inherit;
+				font-weight: 600;
+				white-space: nowrap;
+			}
+			.web-icon-button {
+				width: 30px;
+				padding: 0;
+				border-color: var(--border);
+				background: var(--button);
+				color: var(--button-foreground);
+				font-size: 15px;
+			}
+			.web-icon-button .icon {
+				width: 15px;
+				height: 15px;
+			}
+			.web-button.primary-action,
+			.web-button.outline-action {
+				background: var(--button);
+				color: var(--button-foreground);
+			}
+			.web-button.primary-action {
+				background: var(--primary-button);
+				color: var(--primary-button-foreground);
+			}
+			.web-button.outline-action {
+				background: var(--outline-button);
+				color: var(--button-foreground);
+				border-color: var(--border);
+			}
+			.web-button.primary-action:hover,
+			.web-icon-button:hover {
+				background: var(--button-hover);
+			}
+			.web-button.outline-action:hover {
+				background: var(--outline-button-hover);
+			}
+			.web-button.primary-action:hover {
+				background: var(--primary-button-hover);
+			}
+			.web-button.primary-action:active,
+			.web-icon-button:active {
+				background: var(--button-active);
+			}
+			.web-button.outline-action:active {
+				background: var(--outline-button-active);
+			}
+			.web-button.primary-action:active {
+				background: var(--primary-button-active);
+			}
+			.web-button.pressed,
+			.web-icon-button.pressed {
+				background: var(--focus);
+			}
+			.web-button.secondary-action {
+				background: var(--secondary-button);
+				color: var(--secondary-button-foreground);
+			}
+			.web-button.secondary-action:hover,
+			.monitor-select:hover {
+				background: var(--secondary-button-hover);
+			}
+			.web-button.secondary-action:active,
+			.monitor-select:active {
+				background: var(--secondary-button-active);
+			}
+			.web-button.destructive-action {
+				background: color-mix(in srgb, var(--destructive) 12%, transparent);
+				color: var(--destructive);
+			}
+			.web-content {
+				flex: 1;
+				min-height: 0;
+				overflow: auto;
+				padding: 22px 20px;
+				scrollbar-color: var(--scrollbar) var(--scrollbar-track);
+			}
+			.web-content::-webkit-scrollbar {
+				width: 10px;
+			}
+			.web-content::-webkit-scrollbar-track {
+				background: var(--scrollbar-track);
+			}
+			.web-content::-webkit-scrollbar-thumb {
+				border: 2px solid var(--scrollbar-track);
+				border-radius: 999px;
+				background: var(--scrollbar);
+			}
+			.web-content::-webkit-scrollbar-thumb:hover {
+				background: var(--scrollbar-hover);
+			}
+			.web-content::-webkit-scrollbar-thumb:active {
+				background: var(--scrollbar-active);
+			}
+			.web-content::-webkit-scrollbar-corner,
+			.web-content::-webkit-resizer {
+				background: var(--scrollbar-track);
+			}
+			.web-product ::selection {
+				background: var(--selection);
+			}
+			.web-footer {
+				display: flex;
+				min-height: 38px;
+				align-items: center;
+				justify-content: space-between;
+				gap: 12px;
+				padding: 0 22px;
+				border-top: 1px solid var(--border);
+				background: var(--footer);
+				color: var(--footer-foreground);
+				font-size: 11px;
+			}
+			.web-footer nav {
+				display: flex;
+				gap: 14px;
+			}
+			.web-page {
+				width: 100%;
+				max-width: 760px;
+				margin: 0 auto;
+			}
+			.web-page-head {
+				display: flex;
+				min-height: 30px;
+				align-items: center;
+				justify-content: space-between;
+				gap: 12px;
+				margin-bottom: 13px;
+			}
+			.web-crumbs {
+				display: flex;
+				align-items: center;
+				gap: 6px;
+				font-size: 16px;
+				font-weight: 550;
+				letter-spacing: -0.025em;
+			}
+			.web-crumbs .icon {
+				width: 16px;
+				height: 16px;
+			}
+			.web-crumbs .past,
+			.web-copy {
+				color: var(--muted-foreground);
+			}
+			.web-crumbs button.past {
+				display: inline-flex;
+				align-items: center;
+				gap: 5px;
+				padding: 0;
+				border: 0;
+				background: transparent;
+				font: inherit;
+			}
+			.web-card {
+				overflow: hidden;
+				border: 1px solid var(--border);
+				border-radius: 16px;
+				background: var(--card);
+				color: var(--card-foreground);
+				box-shadow: 0 1px 3px var(--shadow);
+			}
+			.web-docs {
+				display: grid;
+				width: min(920px, 100%);
+				min-height: 100%;
+				grid-template-columns: 190px minmax(0, 1fr);
+				margin: -22px auto;
+			}
+			.web-sidebar {
+				padding: 24px 14px;
+				border-right: 1px solid var(--border);
+				background: var(--sidebar);
+				color: var(--sidebar-foreground);
+			}
+			.web-sidebar strong {
+				display: block;
+				margin: 0 8px 10px;
+				font-size: 11px;
+				letter-spacing: 0.05em;
+				text-transform: uppercase;
+			}
+			.web-sidebar div {
+				padding: 7px 8px;
+				border-radius: 8px;
+			}
+			.web-sidebar .current {
+				background: var(--selected);
+				color: var(--selected-foreground);
+			}
+			.web-doc {
+				max-width: 620px;
+				padding: 30px 36px;
+			}
+			.web-doc h2 {
+				margin: 0 0 8px;
+				font-size: 25px;
+			}
+			.web-doc h3 {
+				margin: 24px 0 8px;
+			}
+			.web-doc-callout {
+				margin-top: 18px;
+				padding: 13px 15px;
+				border: 1px solid var(--border);
+				border-radius: 12px;
+				background: var(--card);
+				color: var(--card-foreground);
+				box-shadow: 0 1px 3px var(--shadow);
+			}
+			.web-browser-colors {
+				display: grid;
+				grid-template-columns: 1fr 12px;
+				gap: 14px;
+				margin-top: 20px;
+				padding: 12px;
+				border: 1px solid var(--border);
+				border-radius: 12px;
+			}
+			.web-selection-sample {
+				align-self: center;
+				padding: 2px 4px;
+				background: var(--selection);
+			}
+			.web-scrollbar-sample {
+				position: relative;
+				min-height: 76px;
+				border-radius: 999px;
+				background: var(--scrollbar-track);
+			}
+			.web-scrollbar-sample::before,
+			.web-scrollbar-sample::after,
+			.web-scrollbar-sample i {
+				position: absolute;
+				right: 2px;
+				left: 2px;
+				border-radius: 999px;
+				content: "";
+			}
+			.web-scrollbar-sample::before {
+				top: 5px;
+				height: 23px;
+				background: var(--scrollbar);
+			}
+			.web-scrollbar-sample::after {
+				top: 31px;
+				height: 18px;
+				background: var(--scrollbar-hover);
+			}
+			.web-scrollbar-sample i {
+				bottom: 5px;
+				height: 17px;
+				background: var(--scrollbar-active);
+			}
+			.web-card-header {
+				display: flex;
+				align-items: flex-start;
+				justify-content: space-between;
+				gap: 12px;
+				padding: 16px 17px 12px;
+			}
+			.web-card-title {
+				font-size: 14px;
+				font-weight: 600;
+			}
+			.web-card-description {
+				margin-top: 3px;
+				color: var(--muted-foreground);
+				font-size: 12px;
+			}
+			.box-table-head,
+			.box-row {
+				display: grid;
+				grid-template-columns: minmax(130px, 1fr) 110px 130px 30px;
+				align-items: center;
+				gap: 10px;
+				padding: 0 14px;
+			}
+			.box-table-head {
+				height: 36px;
+				border-bottom: 1px solid var(--border);
+				font-size: 11px;
+				font-weight: 600;
+			}
+			.box-row {
+				height: 49px;
+				border-bottom: 1px solid var(--border);
+			}
+			.box-row:last-child {
+				border-bottom: 0;
+			}
+			.box-row:hover {
+				background: var(--hover);
+			}
+			.box-name {
+				font-weight: 600;
+			}
+			.web-status {
+				display: inline-flex;
+				align-items: center;
+				gap: 6px;
+				font-size: 11px;
+				font-weight: 600;
+			}
+			.web-status::before {
+				width: 6px;
+				height: 6px;
+				border-radius: 50%;
+				background: currentColor;
+				content: "";
+			}
+			.web-success {
+				color: var(--success);
+			}
+			.web-warning {
+				color: var(--warning);
+			}
+			.web-danger {
+				color: var(--destructive);
+			}
+			.web-info {
+				color: var(--info);
+			}
+			.web-grid {
+				display: grid;
+				grid-template-columns: 1fr 1fr;
+				gap: 12px;
+			}
+			.web-field {
+				display: grid;
+				gap: 5px;
+			}
+			.web-field label {
+				font-size: 12px;
+				font-weight: 600;
+			}
+			.web-field small {
+				color: var(--muted-foreground);
+			}
+			.web-input {
+				display: flex;
+				height: 32px;
+				align-items: center;
+				padding: 0 11px;
+				border: 1px solid var(--field-border);
+				border-radius: 16px;
+				background: var(--field);
+				color: var(--field-foreground);
+			}
+			.web-input .icon {
+				width: 13px;
+				height: 13px;
+				margin-left: auto;
+			}
+			.web-placeholder {
+				color: var(--field-placeholder);
+			}
+			.web-input.focused {
+				border-color: var(--ring);
+				box-shadow: 0 0 0 1px var(--ring);
+			}
+			.web-muted-block {
+				padding: 12px;
+				border-radius: 12px;
+				background: var(--muted);
+				color: var(--muted-foreground);
+			}
+			.web-form-actions {
+				display: flex;
+				justify-content: flex-end;
+				gap: 7px;
+				margin-top: 15px;
+			}
+			.monitor-card {
+				position: relative;
+				height: 360px;
+				padding: 14px;
+			}
+			.monitor-controls {
+				position: relative;
+				z-index: 2;
+				display: flex;
+				gap: 7px;
+			}
+			.monitor-select {
+				display: inline-flex;
+				height: 30px;
+				align-items: center;
+				gap: 18px;
+				padding: 0 10px;
+				border-radius: 15px;
+				background: var(--secondary-button);
+				color: var(--secondary-button-foreground);
+				font-size: 11px;
+			}
+			.monitor-select .icon {
+				width: 12px;
+				height: 12px;
+			}
+			.monitor-select.badge-sample:hover {
+				background: var(--badge-hover);
+			}
+			.metric-summary {
+				position: absolute;
+				top: 18px;
+				right: 18px;
+				text-align: right;
+			}
+			.metric-summary b {
+				display: block;
+				font-size: 19px;
+			}
+			.web-chart {
+				position: absolute;
+				inset: 68px 20px 24px;
+				overflow: hidden;
+				border-bottom: 1px solid var(--border);
+				background: linear-gradient(var(--border) 1px, transparent 1px) 0 0/100%
+					25%;
+			}
+			.web-chart svg {
+				width: 100%;
+				height: 100%;
+				overflow: visible;
+			}
+			.chart-legend {
+				position: absolute;
+				right: 22px;
+				bottom: 29px;
+				display: flex;
+				gap: 10px;
+				color: var(--muted-foreground);
+				font-size: 10px;
+			}
+			.chart-legend span::before {
+				display: inline-block;
+				width: 7px;
+				height: 7px;
+				margin-right: 4px;
+				border-radius: 50%;
+				background: currentColor;
+				content: "";
+			}
+			.web-popover {
+				position: absolute;
+				top: 100px;
+				right: 34px;
+				z-index: 3;
+				width: 205px;
+				padding: 4px;
+				border: 1px solid var(--border);
+				border-radius: 16px;
+				background: var(--popover);
+				color: var(--popover-foreground);
+				box-shadow: 0 12px 32px
+					color-mix(in srgb, var(--overlay) 45%, transparent);
+			}
+			.web-menu-item {
+				display: flex;
+				min-height: 31px;
+				align-items: center;
+				gap: 8px;
+				padding: 6px 9px;
+				border-radius: 12px;
+			}
+			.web-menu-item.selected {
+				background: var(--selected);
+				color: var(--selected-foreground);
+			}
+			.web-menu-separator {
+				height: 1px;
+				margin: 4px -1px;
+				background: var(--border);
+			}
+			.web-toast {
+				position: absolute;
+				right: 34px;
+				bottom: 25px;
+				z-index: 3;
+				display: grid;
+				width: 270px;
+				grid-template-columns: 18px 1fr;
+				gap: 9px;
+				padding: 12px;
+				border: 1px solid var(--border);
+				border-radius: 10px;
+				background: var(--popover);
+				color: var(--popover-foreground);
+				box-shadow: 0 6px 16px -4px
+					color-mix(in srgb, var(--overlay) 35%, transparent);
+			}
+			.web-overlay {
+				position: absolute;
+				inset: 0;
+				z-index: 5;
+				display: grid;
+				place-items: center;
+				padding: 20px;
+				background: var(--overlay);
+			}
+			.web-dialog {
+				width: min(390px, 100%);
+				padding: 20px;
+				border: 1px solid var(--border);
+				border-radius: 22px;
+				background: var(--dialog);
+				color: var(--dialog-foreground);
+				box-shadow: 0 18px 46px
+					color-mix(in srgb, var(--overlay) 70%, transparent);
+			}
+			.web-dialog h3 {
+				margin: 0;
+				font-size: 16px;
+				font-weight: 600;
+			}
+
+			/* IDE: desktop Composery captures have a top menubar, horizontal
+			   activity bar at the foot of Explorer, editor/terminal splits, and
+			   no fabricated left activity rail. */
+			.ide-product {
+				display: grid;
+				grid-template-rows: 35px minmax(0, 1fr) 21px;
+				background: var(--ide-editor);
+				color: var(--ide-foreground);
+				font:
+					12px/1.35 -apple-system,
+					"Segoe UI",
+					sans-serif;
+			}
+			.ide-product button {
+				font: inherit;
+			}
+			.workbench-titlebar {
+				display: grid;
+				grid-template-columns: auto minmax(170px, 1fr) auto;
+				align-items: center;
+				gap: 18px;
+				padding: 0 10px;
+				border-bottom: 1px solid var(--ide-border);
+				background: var(--ide-title-bar);
+				color: var(--ide-title-bar-foreground);
+			}
+			.workbench-menus {
+				display: flex;
+				align-items: center;
+				gap: 12px;
+				white-space: nowrap;
+			}
+			.workbench-mark {
+				width: 20px;
+				height: 20px;
+			}
+			.workbench-command {
+				width: min(430px, 100%);
+				height: 25px;
+				justify-self: center;
+				padding: 3px 12px;
+				border: 1px solid var(--ide-input-border);
+				border-radius: 7px;
+				color: var(--ide-title-bar-foreground);
+				text-align: center;
+			}
+			.workbench-layout {
+				display: flex;
+				gap: 13px;
+				font-size: 15px;
+			}
+			.workbench-layout .codicon {
+				font-size: 15px;
+			}
+			.workbench-body {
+				display: grid;
+				grid-template-columns: 185px minmax(0, 1fr);
+				min-height: 0;
+			}
+			.workbench-sidebar {
+				display: grid;
+				grid-template-rows: 36px minmax(0, 1fr) 40px;
+				min-height: 0;
+				border-right: 1px solid var(--ide-border);
+				background: var(--ide-side-bar);
+				color: var(--ide-foreground);
+			}
+			.explorer-title {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				padding: 0 11px;
+				color: var(--ide-muted-foreground);
+				font-size: 11px;
+				text-transform: uppercase;
+			}
+			.explorer-title .codicon {
+				font-size: 15px;
+			}
+			.explorer-tree {
+				overflow: hidden;
+			}
+			.explorer-section {
+				display: flex;
+				align-items: center;
+				gap: 4px;
+				padding: 5px 9px;
+				font-weight: 700;
+			}
+			.explorer-row {
+				display: flex;
+				height: 23px;
+				align-items: center;
+				gap: 5px;
+				padding-right: 7px;
+				white-space: nowrap;
+			}
+			.explorer-section .codicon,
+			.explorer-row .codicon {
+				flex: 0 0 auto;
+				font-size: 14px;
+			}
+			.explorer-row:hover {
+				background: var(--ide-list-hover);
+			}
+			.explorer-row.selected {
+				background: var(--ide-list-selection);
+				color: var(--ide-list-selection-foreground);
+			}
+			.explorer-row.selected {
+				box-shadow: inset 2px 0 var(--ide-focus);
+			}
+			.explorer-row.ignored {
+				color: var(--ide-ignored);
+			}
+			.explorer-decoration {
+				margin-left: auto;
+				font-weight: 700;
+			}
+			.workbench-activity {
+				display: flex;
+				align-items: center;
+				gap: 15px;
+				padding: 0 10px;
+				border-top: 1px solid var(--ide-border);
+				background: var(--ide-activity-bar);
+				color: var(--ide-activity-bar-inactive);
+				font-size: 17px;
+			}
+			.workbench-activity .active {
+				color: var(--ide-foreground);
+			}
+			.feature-activity-bar-indicator .workbench-activity .active {
+				box-shadow: inset 0 -2px var(--ide-focus);
+			}
+			.workbench-activity button {
+				display: grid;
+				height: 32px;
+				place-items: center;
+				padding: 0;
+				border: 0;
+				background: transparent;
+				color: inherit;
+				cursor: pointer;
+				font-size: inherit;
+			}
+			.workbench-activity .codicon {
+				font-size: 18px;
+			}
+			.workbench-content {
+				min-width: 0;
+				min-height: 0;
+				overflow: hidden;
+				background: var(--ide-editor);
+			}
+			.workbench-status {
+				display: flex;
+				align-items: center;
+				gap: 13px;
+				padding: 0 8px;
+				border-top: 1px solid var(--ide-border);
+				background: var(--ide-status-bar);
+				color: var(--ide-status-bar-foreground);
+				font-size: 11px;
+			}
+			.workbench-status .right {
+				margin-left: auto;
+			}
+			.workbench-status > span:not(.right) {
+				display: inline-flex;
+				align-items: center;
+				gap: 4px;
+			}
+			.workbench-status .codicon {
+				font-size: 12px;
+			}
+			.ide-split {
+				display: grid;
+				height: 100%;
+				grid-template-columns: 1.12fr 0.88fr;
+			}
+			.ide-pane {
+				display: grid;
+				min-width: 0;
+				min-height: 0;
+				grid-template-rows: 35px 1fr;
+				background: var(--ide-editor);
+			}
+			.ide-pane + .ide-pane {
+				border-left: 1px solid var(--ide-border);
+			}
+			.ide-tabs {
+				display: flex;
+				min-width: 0;
+				border-bottom: 1px solid var(--ide-tab-border);
+				background: var(--ide-tab-bar);
+			}
+			.ide-editor-tab {
+				display: flex;
+				height: 35px;
+				align-items: center;
+				gap: 7px;
+				padding: 0 12px;
+				border: 0;
+				border-right: 1px solid var(--ide-tab-border);
+				background: var(--ide-tab-inactive);
+				color: var(--ide-tab-inactive-foreground);
+				cursor: pointer;
+			}
+			.ide-editor-tab .codicon {
+				font-size: 14px;
+			}
+			.ide-editor-tab.active {
+				background: var(--ide-tab-active);
+				color: var(--ide-tab-active-foreground);
+			}
+			.ide-editor-tab.hover-sample {
+				background: var(--ide-tab-hover);
+			}
+			.feature-active-tab-indicator .ide-editor-tab.active {
+				box-shadow: inset 0 1px var(--ide-focus);
+			}
+			.ide-document {
+				min-height: 0;
+				overflow: hidden;
+				padding: 26px 34px;
+				background: var(--ide-editor);
+				color: var(--ide-foreground);
+			}
+			.ide-document h2 {
+				margin: 0 0 13px;
+				padding-bottom: 12px;
+				border-bottom: 1px solid var(--ide-border);
+				font-size: 27px;
+			}
+			.ide-document h3 {
+				margin: 20px 0 9px;
+				font-size: 15px;
+			}
+			.ide-document p,
+			.ide-document li {
+				font-size: 13px;
+				line-height: 1.6;
+			}
+			.ide-document code {
+				padding: 2px 4px;
+				border-radius: 3px;
+				background: var(--ide-selection);
+			}
+			.ide-terminal-pane {
+				display: grid;
+				min-height: 0;
+				grid-template-rows: 35px 1fr;
+				background: var(--ide-panel);
+			}
+			.ide-panel-title {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				padding: 0 11px;
+				border-bottom: 1px solid var(--ide-border);
+				color: var(--ide-foreground);
+			}
+			.ide-panel-actions {
+				display: inline-flex;
+				align-items: center;
+				gap: 8px;
+			}
+			.ide-panel-actions .codicon {
+				font-size: 14px;
+			}
+			.feature-panel-title-indicator .ide-panel-title span:first-child {
+				align-self: stretch;
+				padding-top: 10px;
+				box-shadow: inset 0 -2px var(--ide-focus);
+			}
+			.ide-terminal {
+				min-height: 0;
+				overflow: hidden;
+				padding: 14px;
+				background: var(--ide-panel);
+				color: var(--ide-foreground);
+				font:
+					12px/1.55 "Cascadia Mono",
+					Consolas,
+					monospace;
+			}
+			.ide-terminal .dim {
+				color: var(--ide-muted-foreground);
+			}
+			.ide-editor-stack {
+				display: grid;
+				height: 100%;
+				grid-template-rows: 35px 23px 1fr;
+			}
+			.ide-breadcrumbs {
+				display: flex;
+				align-items: center;
+				gap: 6px;
+				padding: 0 13px;
+				background: var(--ide-breadcrumb);
+				color: var(--ide-breadcrumb-foreground);
+				font-size: 11px;
+			}
+			.ide-code {
+				position: relative;
+				display: grid;
+				min-height: 0;
+				grid-template-columns: minmax(0, 1fr) 68px;
+				overflow: hidden;
+				background: var(--ide-editor);
+				color: var(--ide-foreground);
+				font:
+					12px/19px "Cascadia Mono",
+					Consolas,
+					monospace;
+			}
+			.code-scroll {
+				position: relative;
+				min-width: 0;
+				padding: 8px 0;
+			}
+			.editor-ruler {
+				position: absolute;
+				top: 0;
+				bottom: 0;
+				left: 83%;
+				width: 1px;
+				background: var(--ide-ruler);
+			}
+			.editor-line {
+				display: grid;
+				min-height: 19px;
+				grid-template-columns: 36px 5px 1fr;
+			}
+			.editor-line > span:last-child {
+				overflow: hidden;
+				white-space: nowrap;
+			}
+			.editor-line.current {
+				background: var(--ide-list-hover);
+			}
+			.editor-number {
+				padding-right: 8px;
+				color: var(--ide-line-number);
+				text-align: right;
+			}
+			.editor-line.current .editor-number {
+				color: var(--ide-active-line-number);
+			}
+			.editor-gutter.added {
+				background: var(--ide-gutter-added);
+			}
+			.editor-gutter.modified {
+				background: var(--ide-gutter-modified);
+			}
+			.editor-gutter.deleted {
+				background: var(--ide-gutter-deleted);
+			}
+			.indent-guide {
+				display: inline-block;
+				width: 17px;
+				height: 16px;
+				border-left: 1px solid var(--ide-indent-guide);
+			}
+			.indent-guide.active {
+				border-left-color: var(--ide-active-indent-guide);
+			}
+			.editor-whitespace {
+				color: var(--ide-whitespace);
+			}
+			.editor-selection {
+				background: var(--ide-selection);
+			}
+			.editor-selection-highlight {
+				background: var(--ide-selection-highlight);
+			}
+			.editor-word-highlight {
+				background: var(--ide-word-highlight);
+			}
+			.editor-find {
+				background: color-mix(in srgb, var(--ide-find-match) 65%, transparent);
+			}
+			.editor-find-highlight {
+				background: var(--ide-find-match-highlight);
+			}
+			.editor-bracket {
+				outline: 1px solid var(--ide-bracket-match);
+			}
+			.editor-cursor {
+				display: inline-block;
+				width: 2px;
+				height: 15px;
+				translate: 0 3px;
+				background: var(--ide-cursor);
+			}
+			.ide-minimap {
+				position: relative;
+				padding: 9px 7px;
+				border-left: 1px solid var(--ide-border);
+			}
+			.ide-minimap i {
+				display: block;
+				height: 2px;
+				margin-bottom: 3px;
+				border-radius: 1px;
+				background: currentColor;
+				opacity: 0.75;
+			}
+			.scrollbar-samples {
+				position: absolute;
+				top: 7px;
+				right: 2px;
+				display: flex;
+				gap: 2px;
+			}
+			.scrollbar-samples i {
+				width: 5px;
+				height: 42px;
+				border-radius: 4px;
+				opacity: 1;
+			}
+			.scrollbar-normal {
+				background: var(--ide-scrollbar) !important;
+			}
+			.scrollbar-hover {
+				background: var(--ide-scrollbar-hover) !important;
+			}
+			.scrollbar-active {
+				background: var(--ide-scrollbar-active) !important;
+			}
+			.syn-keyword {
+				color: var(--ide-keyword);
+			}
+			.syn-operator {
+				color: var(--ide-operator);
+			}
+			.syn-string {
+				color: var(--ide-string);
+			}
+			.syn-escape {
+				color: var(--ide-escape);
+			}
+			.syn-regex {
+				color: var(--ide-regex);
+			}
+			.syn-number {
+				color: var(--ide-number);
+			}
+			.syn-function {
+				color: var(--ide-function);
+			}
+			.syn-decorator {
+				color: var(--ide-decorator);
+			}
+			.syn-type {
+				color: var(--ide-type);
+			}
+			.syn-namespace {
+				color: var(--ide-namespace);
+			}
+			.syn-tag {
+				color: var(--ide-tag);
+			}
+			.syn-attribute {
+				color: var(--ide-attribute);
+			}
+			.syn-variable {
+				color: var(--ide-variable);
+			}
+			.syn-property {
+				color: var(--ide-property);
+			}
+			.syn-parameter {
+				color: var(--ide-parameter);
+			}
+			.syn-constant {
+				color: var(--ide-constant);
+			}
+			.syn-label {
+				color: var(--ide-label);
+			}
+			.syn-punctuation {
+				color: var(--ide-punctuation);
+			}
+			.syn-comment {
+				color: var(--ide-comment);
+			}
+			.feature-semantic-highlighting [data-feature="semanticHighlighting"] {
+				color: var(--ide-type);
+			}
+			.ide-product:not(.feature-surface-borders) {
+				--ide-border: transparent !important;
+			}
+			.ide-product:not(.feature-control-borders) {
+				--ide-input-border: transparent !important;
+			}
+			.ide-product:not(.feature-tab-borders) {
+				--ide-tab-border: transparent !important;
+			}
+			.ide-product:not(.feature-shadows) {
+				--ide-shadow: transparent !important;
+			}
+			.feature-contrast-borders .explorer-row.selected {
+				outline: 1px solid var(--ide-focus);
+				outline-offset: -1px;
+			}
+			.ide-diff {
+				display: grid;
+				height: 100%;
+				grid-template-rows: 35px 1fr;
+			}
+			.diff-columns {
+				display: grid;
+				min-height: 0;
+				grid-template-columns: 1fr 1fr;
+				font:
+					12px/19px "Cascadia Mono",
+					Consolas,
+					monospace;
+			}
+			.diff-side + .diff-side {
+				border-left: 1px solid var(--ide-border);
+			}
+			.diff-line {
+				display: grid;
+				grid-template-columns: 34px 5px 1fr;
+				min-height: 19px;
+				white-space: pre;
+			}
+			.diff-line.inserted {
+				background: var(--ide-diff-inserted);
+			}
+			.diff-line.removed {
+				background: var(--ide-diff-removed);
+			}
+			.ide-widget-stage {
+				position: relative;
+				height: 100%;
+				background: var(--ide-editor);
+			}
+			.widget-code {
+				padding: 34px;
+				color: var(--ide-muted-foreground);
+				font:
+					12px/20px "Cascadia Mono",
+					Consolas,
+					monospace;
+			}
+			.ide-quick-input {
+				position: absolute;
+				top: 28px;
+				left: 50%;
+				width: min(470px, 75%);
+				translate: -50% 0;
+				overflow: hidden;
+				border: 1px solid var(--ide-border);
+				border-radius: 7px;
+				background: var(--ide-widget);
+				color: var(--ide-foreground);
+				box-shadow: 0 14px 42px var(--ide-shadow);
+			}
+			.ide-input {
+				margin: 8px;
+				padding: 7px 9px;
+				border: 1px solid var(--ide-input-border);
+				border-radius: 3px;
+				background: var(--ide-input-background);
+				color: var(--ide-placeholder);
+			}
+			.ide-input.focused {
+				border-color: var(--ide-focus);
+			}
+			.ide-quick-row {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				padding: 7px 12px;
+				color: var(--ide-muted-foreground);
+			}
+			.ide-quick-row.selected {
+				background: var(--ide-list-selection);
+				color: var(--ide-list-selection-foreground);
+			}
+			.ide-badge {
+				min-width: 19px;
+				padding: 1px 5px;
+				border-radius: 10px;
+				background: var(--ide-badge);
+				color: var(--ide-badge-foreground);
+				text-align: center;
+			}
+			.ide-dropdown {
+				position: absolute;
+				top: 115px;
+				right: 30px;
+				width: 170px;
+				padding: 5px;
+				border: 1px solid var(--ide-input-border);
+				background: var(--ide-dropdown);
+				color: var(--ide-dropdown-foreground);
+				box-shadow: 0 10px 28px var(--ide-shadow);
+			}
+			.ide-dropdown div {
+				padding: 6px 8px;
+			}
+			.ide-dropdown .selected {
+				background: var(--ide-list-selection);
+				color: var(--ide-list-selection-foreground);
+			}
+			.ide-notification {
+				position: absolute;
+				right: 28px;
+				bottom: 24px;
+				width: 320px;
+				padding: 12px;
+				border: 1px solid var(--ide-border);
+				border-radius: 5px;
+				background: var(--ide-widget);
+				color: var(--ide-foreground);
+				box-shadow: 0 10px 30px var(--ide-shadow);
+			}
+			.ide-notification-message,
+			.ide-terminal-status {
+				display: flex;
+				align-items: center;
+				gap: 6px;
+			}
+			.ide-notification-message .codicon,
+			.ide-terminal-status .codicon {
+				flex: 0 0 auto;
+				font-size: 14px;
+			}
+			.ide-notification a {
+				color: var(--ide-link);
+				text-decoration: none;
+			}
+			.ide-notification-actions {
+				display: flex;
+				justify-content: flex-end;
+				gap: 6px;
+				margin-top: 10px;
+			}
+			.ide-button {
+				padding: 4px 10px;
+				border: 0;
+				background: var(--ide-button);
+				color: var(--ide-button-foreground);
+			}
+			.ide-button:hover {
+				background: var(--ide-button-hover);
+			}
+			.ide-button.secondary {
+				background: var(--ide-secondary-button);
+				color: var(--ide-secondary-button-foreground);
+			}
+			.ide-button.secondary:hover {
+				background: var(--ide-secondary-button-hover);
+			}
+			.ide-details {
+				display: grid;
+				height: 100%;
+				grid-template-columns: minmax(0, 1.2fr) minmax(240px, 0.8fr);
+				gap: 12px;
+				padding: 16px;
+				overflow: auto;
+				background: var(--ide-editor);
+			}
+			.ide-detail-card {
+				min-width: 0;
+				overflow: hidden;
+				border: 1px solid var(--ide-border);
+				border-radius: 6px;
+				background: var(--ide-widget);
+				color: var(--ide-foreground);
+				box-shadow: 0 8px 24px var(--ide-shadow);
+			}
+			.ide-detail-title {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				padding: 9px 11px;
+				border-bottom: 1px solid var(--ide-separator);
+				color: var(--ide-settings-header);
+				font-weight: 600;
+			}
+			.ide-setting {
+				display: grid;
+				grid-template-columns: 4px minmax(0, 1fr) 150px;
+				align-items: center;
+				gap: 10px;
+				padding: 10px 11px 10px 0;
+				border-bottom: 1px solid var(--ide-separator);
+			}
+			.ide-setting::before {
+				align-self: stretch;
+				background: var(--ide-settings-modified);
+				content: "";
+			}
+			.ide-setting-control {
+				padding: 5px 7px;
+				border: 1px solid var(--ide-input-border);
+				border-radius: 3px;
+				background: var(--ide-input-background);
+				color: var(--ide-input-foreground);
+			}
+			.ide-detail-stack {
+				display: grid;
+				align-content: start;
+				gap: 12px;
+			}
+			.ide-chat {
+				padding: 11px;
+			}
+			.ide-chat-command,
+			.ide-preformatted {
+				display: inline-flex;
+				margin: 7px 0;
+				padding: 3px 6px;
+				border-radius: 3px;
+			}
+			.ide-chat-command {
+				background: var(--ide-chat-accent);
+				color: var(--ide-chat-accent-foreground);
+			}
+			.ide-chat-edited {
+				color: var(--ide-chat-edited);
+			}
+			.ide-preformatted {
+				background: var(--ide-preformatted);
+				color: var(--ide-preformatted-foreground);
+				font-family: "Cascadia Mono", Consolas, monospace;
+			}
+			.ide-debug-toolbar {
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				gap: 13px;
+				padding: 9px;
+				background: var(--ide-debug-toolbar);
+				font-size: 15px;
+			}
+			.ide-debug-toolbar .codicon {
+				font-size: 15px;
+			}
+			.ide-debug-status {
+				padding: 5px 9px;
+				background: var(--ide-debug-status);
+				color: var(--ide-debug-status-foreground);
+			}
+			.ide-drop-target {
+				margin: 11px;
+				padding: 18px;
+				border: 1px dashed var(--ide-focus);
+				border-radius: 4px;
+				background: var(--ide-drop-background);
+				text-align: center;
+			}
+			.ansi-table {
+				display: grid;
+				grid-template-columns: repeat(2, minmax(0, 1fr));
+				gap: 4px 20px;
+				margin-top: 15px;
+			}
+			.ansi-table span {
+				padding: 2px 6px;
+				border-left: 6px solid currentColor;
+			}
+
+			@media (max-width: 950px) {
+				body {
+					height: auto;
+				}
+				.layout {
+					display: block;
+				}
+				.controls {
+					overflow: visible;
+					border-right: 0;
+					border-bottom: 1px solid var(--border);
+				}
+				.stage {
+					overflow-x: auto;
+				}
+				.preview-summary {
+					display: none;
+				}
+			}
+		</style>
+		<script>
+			// The palette arrives over the network; without this the first frame is
+			// the browser's white canvas. Remembered alongside the session state.
+			window.COLORS_STORE = "composery-colors";
+			try {
+				const last = JSON.parse(
+					localStorage.getItem(window.COLORS_STORE) ?? "{}"
+				);
+				const root = document.documentElement;
+				root.style.colorScheme = last.scheme === "dark" ? "dark" : "light";
+				for (const [name, value] of Object.entries(last.vars ?? {}))
+					root.style.setProperty(name, value);
+				// Exactly the properties the last paint set, so the chrome does not
+				// reflow once the real palette lands.
+
+				if (!last.vars) {
+					root.style.setProperty("--background", "#ffffff");
+					root.style.setProperty("--foreground", "#000000");
+				}
+			} catch {}
+		</script>
+	</head>
+	<body>
+		<header class="toolbar">
+			<h1>Colors</h1>
+			<label class="filter"
+				><input id="only-area" type="checkbox" /> Only this tab</label
+			>
+			<label class="filter"
+				><input id="hide-linked" type="checkbox" /> Hide linked</label
+			>
+			<div class="history">
+				<button
+					class="icon-only"
+					id="undo"
+					title="Undo (Ctrl+Z)"
+					aria-label="Undo"
+				>
+					<svg class="icon" aria-hidden="true">
+						<use href="/lucide.svg#undo-2"></use>
+					</svg>
+				</button>
+				<button
+					class="icon-only"
+					id="redo"
+					title="Redo (Ctrl+Y)"
+					aria-label="Redo"
+				>
+					<svg class="icon" aria-hidden="true">
+						<use href="/lucide.svg#redo-2"></use>
+					</svg>
+				</button>
+			</div>
+			<div class="segment" id="area" aria-label="Preview">
+				<button data-value="web" aria-pressed="true">web</button>
+				<button data-value="ide" aria-pressed="false">ide</button>
+			</div>
+			<div class="segment" id="scheme" aria-label="Scheme">
+				<button data-value="light" aria-pressed="true">Light</button>
+				<button data-value="dark" aria-pressed="false">Dark</button>
+			</div>
+			<button class="plain with-icon" id="reset-all">
+				<svg class="icon" aria-hidden="true">
+					<use href="/lucide.svg#rotate-ccw"></use>
+				</svg>
+				Reset all
+			</button>
+			<button class="plain with-icon" id="transfer-open">
+				<svg class="icon" aria-hidden="true">
+					<use href="/lucide.svg#arrow-right-left"></use>
+				</svg>
+				Transfer
+			</button>
+			<button class="primary with-icon" id="save">
+				<svg class="icon" aria-hidden="true">
+					<use href="/lucide.svg#save"></use>
+				</svg>
+				Save
+			</button>
+		</header>
+		<main class="layout">
+			<aside class="controls">
+				<div id="roles"></div>
+				<p id="status"></p>
+			</aside>
+			<section class="stage" id="stage"></section>
+		</main>
+		<dialog id="transfer">
+			<h2>Every colour, as saved</h2>
+			<textarea id="transfer-text" spellcheck="false"></textarea>
+			<p id="transfer-status"></p>
+			<div class="transfer-actions">
+				<button class="plain" id="transfer-close">Close</button>
+				<button class="primary" id="transfer-apply">Apply</button>
+			</div>
+		</dialog>
+		<div id="picker" popover>
+			<div class="sv"><i></i></div>
+			<input class="hue" type="range" min="0" max="360" aria-label="Hue" />
+			<input class="alpha" type="range" min="0" max="255" aria-label="Alpha" />
+			<input class="hex" type="text" spellcheck="false" aria-label="Hex" />
+		</div>
+
+		<template data-preview-shell="web">
+			<div
+				class="product-preview web-product"
+				data-token="web.background web.foreground"
+			>
+				<header
+					class="web-header"
+					data-token="web.header web.headerForeground web.border web.shadow"
+				>
+					<button class="product-logo" data-go-view="boxes" type="button">
+						<span class="product-mark"></span><span>Composery</span>
+					</button>
+					<nav class="web-nav" aria-label="Website pages">
+						<button
+							data-go-view="boxes"
+							data-token="web.hover web.selected"
+							type="button"
+						>
+							Boxes
+						</button>
+						<button data-go-view="monitor" type="button">Monitor</button>
+						<button data-go-view="form" type="button">Configure</button>
+						<button data-go-view="docs" type="button">Docs</button>
+					</nav>
+					<div class="web-account">
+						<button
+							class="web-icon-button icon-only"
+							data-token="web.button web.buttonForeground web.buttonHover web.buttonActive"
+							type="button"
+							aria-label="Theme"
+						>
+							<svg class="icon" aria-hidden="true">
+								<use href="/lucide.svg#sun-moon"></use>
+							</svg>
+						</button>
+						<button
+							class="web-button primary-action"
+							data-token="web.primaryButton web.primaryButtonForeground web.primaryButtonHover web.primaryButtonActive"
+							type="button"
+						>
+							Sign in
+						</button>
+					</div>
+				</header>
+				<main class="web-content" data-preview-slot></main>
+				<footer
+					class="web-footer"
+					data-token="web.footer web.footerForeground web.border"
+				>
+					<span>Â© 2026 Composery</span>
+					<nav><span>Docs</span><span>Privacy</span><span>Terms</span></nav>
+				</footer>
+			</div>
+		</template>
+
+		<template
+			data-preview-state
+			data-surface="web"
+			data-view="docs"
+			data-label="Docs"
+			data-order="99"
+		>
+			<div class="web-docs">
+				<aside
+					class="web-sidebar"
+					data-token="web.sidebar web.sidebarForeground web.border"
+				>
+					<strong>Documentation</strong>
+					<div class="current" data-token="web.selected web.selectedForeground">
+						Getting started
+					</div>
+					<div>Configuration</div>
+					<div>Persistence</div>
+					<div>Self-hosting</div>
+					<div>API reference</div>
+				</aside>
+				<article class="web-doc">
+					<div class="web-copy" data-token="web.mutedForeground">
+						Docs / Getting started
+					</div>
+					<h2>Build anywhere, keep everything</h2>
+					<p>
+						Composery gives every project a persistent browser IDE with the
+						tools, terminals, and files it needs.
+					</p>
+					<p>
+						Read the
+						<a class="web-link" data-token="web.link">configuration guide</a>
+						or use the
+						<input checked data-token="web.control" type="checkbox" /> automatic
+						update setting.
+					</p>
+					<div
+						class="web-doc-callout"
+						data-token="web.card web.cardForeground web.border web.shadow"
+					>
+						<b>Before you start</b>
+						<p class="web-copy" data-token="web.mutedForeground">
+							Choose a deployment and keep the generated password somewhere
+							safe.
+						</p>
+					</div>
+					<h3>Create your first box</h3>
+					<p>
+						Open Boxes, choose a region, and start the runtime. Your workspace
+						will be ready at its permanent URL.
+					</p>
+					<div class="web-browser-colors" data-token="web.border">
+						<span class="web-selection-sample" data-token="web.selection"
+							>Selected browser text</span
+						>
+						<span
+							class="web-scrollbar-sample"
+							data-token="web.scrollbarTrack web.scrollbar web.scrollbarHover web.scrollbarActive"
+							><i data-token="web.scrollbarActive"></i
+						></span>
+					</div>
+				</article>
+			</div>
+		</template>
+
+		<template
+			data-preview-state
+			data-surface="web"
+			data-view="boxes"
+			data-label="Boxes"
+		>
+			<section class="web-page">
+				<span
+					class="monitor-select badge-sample"
+					data-token="web.badge web.badgeForeground web.badgeHover"
+					style="float: right"
+					>3 boxes</span
+				>
+				<div class="web-page-head">
+					<div class="web-crumbs">
+						<svg class="icon" aria-hidden="true">
+							<use href="/lucide.svg#boxes"></use>
+						</svg>
+						<span>Boxes</span>
+					</div>
+					<button
+						class="web-button primary-action"
+						data-go-view="form"
+						data-token="web.primaryButton web.primaryButtonForeground web.primaryButtonHover web.primaryButtonActive"
+						type="button"
+					>
+						<svg class="icon" aria-hidden="true">
+							<use href="/lucide.svg#plus"></use>
+						</svg>
+						New box
+					</button>
+				</div>
+				<div
+					class="web-card"
+					data-token="web.card web.cardForeground web.border web.shadow"
+				>
+					<div class="box-table-head">
+						<span>Slug</span><span>Created</span><span>Status</span
+						><span></span>
+					</div>
+					<div class="box-row" data-go-view="monitor">
+						<span class="box-name">quiet-harbour</span>
+						<span class="web-copy" data-token="web.mutedForeground"
+							>28 Jul 2026</span
+						>
+						<span class="web-status web-success" data-token="web.success"
+							>Running</span
+						>
+						<button
+							class="web-icon-button icon-only"
+							type="button"
+							aria-label="Open box"
+						>
+							<svg class="icon" aria-hidden="true">
+								<use href="/lucide.svg#external-link"></use>
+							</svg>
+						</button>
+					</div>
+					<div class="box-row">
+						<span class="box-name">soft-river</span>
+						<span class="web-copy" data-token="web.mutedForeground"
+							>21 Jul 2026</span
+						>
+						<span class="web-status web-warning" data-token="web.warning"
+							>Updating</span
+						>
+						<button
+							class="web-icon-button icon-only"
+							type="button"
+							aria-label="Open box"
+						>
+							<svg class="icon" aria-hidden="true">
+								<use href="/lucide.svg#external-link"></use>
+							</svg>
+						</button>
+					</div>
+					<div class="box-row">
+						<span class="box-name">old-lantern</span>
+						<span class="web-copy" data-token="web.mutedForeground"
+							>03 Jul 2026</span
+						>
+						<span class="web-status web-danger" data-token="web.destructive"
+							>Stopped</span
+						>
+						<button
+							class="web-icon-button icon-only"
+							type="button"
+							aria-label="Open box"
+						>
+							<svg class="icon" aria-hidden="true">
+								<use href="/lucide.svg#external-link"></use>
+							</svg>
+						</button>
+					</div>
+				</div>
+			</section>
+		</template>
+
+		<template
+			data-preview-state
+			data-surface="web"
+			data-view="monitor"
+			data-label="Monitor"
+		>
+			<section class="web-page">
+				<div class="web-page-head">
+					<div class="web-crumbs">
+						<button class="past" data-go-view="boxes" type="button">
+							<svg class="icon" aria-hidden="true">
+								<use href="/lucide.svg#boxes"></use>
+							</svg>
+							Boxes
+						</button>
+						<span class="past">/</span><span>quiet-harbour</span>
+					</div>
+					<span class="web-status web-success" data-token="web.success"
+						>Running</span
+					>
+				</div>
+				<div
+					class="web-card monitor-card"
+					data-token="web.card web.cardForeground web.border web.shadow"
+				>
+					<div class="monitor-controls">
+						<span
+							class="monitor-select"
+							data-token="web.secondaryButton web.secondaryButtonForeground"
+						>
+							Metrics
+							<svg class="icon" aria-hidden="true">
+								<use href="/lucide.svg#chevron-down"></use>
+							</svg>
+						</span>
+						<span
+							class="monitor-select"
+							data-token="web.secondaryButton web.secondaryButtonForeground"
+						>
+							CPU
+							<svg class="icon" aria-hidden="true">
+								<use href="/lucide.svg#chevron-down"></use>
+							</svg>
+						</span>
+						<span
+							class="monitor-select"
+							data-token="web.secondaryButton web.secondaryButtonForeground"
+						>
+							1 hour
+							<svg class="icon" aria-hidden="true">
+								<use href="/lucide.svg#chevron-down"></use>
+							</svg>
+						</span>
+					</div>
+					<div class="metric-summary">
+						<span class="web-copy" data-token="web.mutedForeground"
+							>CPU now</span
+						><b>18%</b>
+					</div>
+					<div class="web-chart" data-token="web.border">
+						<svg viewBox="0 0 600 240" preserveAspectRatio="none">
+							<path
+								data-token="web.chart5"
+								d="M0 180 C70 170 95 190 145 151 S230 165 290 130 S390 145 450 112 S540 120 600 90"
+								fill="none"
+								stroke="var(--chart5)"
+								stroke-width="3"
+							/>
+							<path
+								data-token="web.chart4"
+								d="M0 198 C62 201 110 173 160 182 S250 150 310 169 S398 133 470 145 S540 107 600 116"
+								fill="none"
+								stroke="var(--chart4)"
+								stroke-width="3"
+							/>
+							<path
+								data-token="web.chart3"
+								d="M0 150 C55 130 105 160 165 135 S265 120 330 128 S425 90 490 105 S560 78 600 84"
+								fill="none"
+								stroke="var(--chart3)"
+								stroke-width="3"
+							/>
+							<path
+								data-token="web.chart2"
+								d="M0 214 C55 185 125 207 182 174 S275 190 345 151 S432 173 500 132 S560 143 600 121"
+								fill="none"
+								stroke="var(--chart2)"
+								stroke-width="3"
+							/>
+							<path
+								data-token="web.chart1"
+								d="M0 205 C65 160 115 185 175 142 S275 161 335 116 S425 137 495 88 S557 104 600 58"
+								fill="none"
+								stroke="var(--chart1)"
+								stroke-width="4"
+							/>
+						</svg>
+					</div>
+					<div class="chart-legend">
+						<span style="color: var(--chart1)">CPU</span>
+						<span style="color: var(--chart2)">Memory</span>
+						<span style="color: var(--chart3)">Disk</span>
+						<span style="color: var(--chart4)">Load</span>
+						<span style="color: var(--chart5)">Network</span>
+					</div>
+				</div>
+				<div class="web-form-actions">
+					<button
+						class="web-button outline-action"
+						data-token="web.outlineButton web.buttonForeground web.outlineButtonHover web.outlineButtonActive"
+						type="button"
+					>
+						Stop
+					</button>
+					<button
+						class="web-button outline-action"
+						data-go-view="menu"
+						data-token="web.outlineButton web.buttonForeground web.outlineButtonHover web.outlineButtonActive"
+						type="button"
+					>
+						More actions
+					</button>
+				</div>
+			</section>
+		</template>
+
+		<template
+			data-preview-state
+			data-surface="web"
+			data-view="form"
+			data-label="Form"
+		>
+			<section class="web-page">
+				<div class="web-page-head">
+					<div class="web-crumbs">
+						<button class="past" data-go-view="boxes" type="button">
+							<svg class="icon" aria-hidden="true">
+								<use href="/lucide.svg#boxes"></use>
+							</svg>
+							Boxes
+						</button>
+						<span class="past">/</span><span>quiet-harbour</span>
+						<span class="past">/</span><span>Configuration</span>
+					</div>
+				</div>
+				<div
+					class="web-card"
+					data-token="web.card web.cardForeground web.border web.shadow"
+				>
+					<div class="web-card-header">
+						<div>
+							<div class="web-card-title">Box configuration</div>
+							<div
+								class="web-card-description"
+								data-token="web.mutedForeground"
+							>
+								Settings are applied the next time the runtime starts.
+							</div>
+						</div>
+					</div>
+					<div style="display: grid; gap: 14px; padding: 0 17px 17px">
+						<div class="web-grid">
+							<div class="web-field">
+								<label>Slug</label>
+								<div
+									class="web-input focused"
+									data-token="web.field web.fieldForeground web.fieldBorder web.ring"
+								>
+									quiet-harbour
+								</div>
+								<small data-token="web.mutedForeground"
+									>Used in your box URL.</small
+								>
+							</div>
+							<div class="web-field">
+								<label>Region</label>
+								<div
+									class="web-input web-placeholder"
+									data-token="web.field web.fieldPlaceholder web.fieldBorder"
+								>
+									<span>Dublin, Ireland</span>
+									<svg class="icon" aria-hidden="true">
+										<use href="/lucide.svg#chevron-down"></use>
+									</svg>
+								</div>
+								<small data-token="web.mutedForeground"
+									>Closest to your team.</small
+								>
+							</div>
+						</div>
+						<div
+							class="web-muted-block"
+							data-token="web.muted web.mutedForeground"
+						>
+							Changing runtime configuration restarts the box. Your files and
+							snapshots stay in place.
+						</div>
+						<div class="web-form-actions">
+							<button
+								class="web-button secondary-action"
+								data-token="web.secondaryButton web.secondaryButtonForeground web.secondaryButtonHover web.secondaryButtonActive"
+								type="button"
+							>
+								Discard
+							</button>
+							<button
+								class="web-button primary-action"
+								data-token="web.primaryButton web.primaryButtonForeground web.primaryButtonHover web.primaryButtonActive"
+								type="button"
+							>
+								Save changes
+							</button>
+						</div>
+					</div>
+				</div>
+			</section>
+		</template>
+
+		<template
+			data-preview-state
+			data-surface="web"
+			data-view="menu"
+			data-label="Menu + toast"
+		>
+			<section class="web-page" style="position: relative; min-height: 430px">
+				<div class="web-page-head">
+					<div class="web-crumbs">
+						<svg class="icon" aria-hidden="true">
+							<use href="/lucide.svg#boxes"></use>
+						</svg>
+						<span>quiet-harbour</span>
+					</div>
+					<button
+						class="web-button outline-action pressed"
+						data-token="web.outlineButton web.buttonForeground web.outlineButtonHover web.outlineButtonActive web.focus"
+						type="button"
+					>
+						More actions
+						<svg class="icon" aria-hidden="true">
+							<use href="/lucide.svg#chevron-down"></use>
+						</svg>
+					</button>
+				</div>
+				<div
+					class="web-card"
+					data-token="web.card web.cardForeground web.border"
+				>
+					<div class="web-card-header">
+						<div>
+							<div class="web-card-title">Runtime</div>
+							<div
+								class="web-card-description"
+								data-token="web.mutedForeground"
+							>
+								Composery 0.1.0 Â· Running in Dublin
+							</div>
+						</div>
+						<span class="web-status web-success" data-token="web.success"
+							>Healthy</span
+						>
+					</div>
+					<div
+						class="web-muted-block"
+						data-token="web.muted web.mutedForeground"
+						style="margin: 0 17px 17px"
+					>
+						Last checked a few seconds ago. No action is required.
+					</div>
+				</div>
+				<div
+					class="web-popover"
+					data-token="web.popover web.popoverForeground web.border web.shadow"
+				>
+					<div
+						class="web-menu-item selected"
+						data-token="web.selected web.selectedForeground"
+					>
+						<svg class="icon" aria-hidden="true">
+							<use href="/lucide.svg#external-link"></use>
+						</svg>
+						Open in editor
+					</div>
+					<div class="web-menu-item">
+						<svg class="icon" aria-hidden="true">
+							<use href="/lucide.svg#camera"></use>
+						</svg>
+						Take snapshot
+					</div>
+					<div class="web-menu-item">
+						<svg class="icon" aria-hidden="true">
+							<use href="/lucide.svg#square-pen"></use>
+						</svg>
+						Change slug
+					</div>
+					<div class="web-menu-separator" data-token="web.border"></div>
+					<div
+						class="web-menu-item web-danger"
+						data-go-view="dialog"
+						data-token="web.destructive"
+					>
+						<svg class="icon" aria-hidden="true">
+							<use href="/lucide.svg#trash-2"></use>
+						</svg>
+						Delete box
+					</div>
+				</div>
+				<div
+					class="web-toast"
+					data-token="web.popover web.popoverForeground web.border web.shadow"
+				>
+					<svg class="icon web-info" data-token="web.info" aria-hidden="true">
+						<use href="/lucide.svg#info"></use>
+					</svg>
+					<div>
+						<b>Update available</b>
+						<div class="web-copy" data-token="web.mutedForeground">
+							Reload when your current task is safe.
+						</div>
+					</div>
+				</div>
+			</section>
+		</template>
+
+		<template
+			data-preview-state
+			data-surface="web"
+			data-view="dialog"
+			data-label="Dialog"
+		>
+			<section class="web-page">
+				<div class="web-page-head">
+					<div class="web-crumbs">
+						<svg class="icon" aria-hidden="true">
+							<use href="/lucide.svg#boxes"></use>
+						</svg>
+						<span>Boxes</span>
+					</div>
+				</div>
+				<div
+					class="web-card"
+					data-token="web.card web.cardForeground web.border"
+				>
+					<div class="web-card-header">
+						<div>
+							<div class="web-card-title">quiet-harbour</div>
+							<div
+								class="web-card-description"
+								data-token="web.mutedForeground"
+							>
+								Running Â· Dublin, Ireland
+							</div>
+						</div>
+					</div>
+				</div>
+			</section>
+			<div class="web-overlay" data-token="web.overlay">
+				<div
+					class="web-dialog"
+					data-token="web.dialog web.dialogForeground web.border web.shadow"
+				>
+					<h3>Delete quiet-harbour?</h3>
+					<p class="web-copy" data-token="web.mutedForeground">
+						This permanently removes the box and every snapshot stored with it.
+						This cannot be undone.
+					</p>
+					<div class="web-form-actions">
+						<button
+							class="web-button outline-action"
+							data-go-view="boxes"
+							data-token="web.outlineButton web.buttonForeground web.outlineButtonHover web.outlineButtonActive"
+							type="button"
+						>
+							Cancel
+						</button>
+						<button
+							class="web-button destructive-action"
+							data-token="web.destructive"
+							type="button"
+						>
+							Delete box
+						</button>
+					</div>
+				</div>
+			</div>
+		</template>
+
+		<template data-preview-shell="ide">
+			<div
+				class="product-preview ide-product"
+				data-token="ide.editor ide.foreground"
+			>
+				<header
+					class="workbench-titlebar"
+					data-feature="surfaceBorders"
+					data-token="ide.titleBar ide.titleBarForeground ide.border"
+				>
+					<div class="workbench-menus">
+						<span class="product-mark workbench-mark"></span>
+						<span>File</span><span>Edit</span><span>Selection</span
+						><span>View</span><span>Go</span><span>Run</span
+						><span>Terminal</span>
+					</div>
+					<div
+						class="workbench-command"
+						data-token="ide.inputBorder ide.titleBarForeground"
+					>
+						workspace
+					</div>
+					<div class="workbench-layout">
+						<i class="codicon codicon-layout-panel" aria-hidden="true"></i>
+						<i
+							class="codicon codicon-layout-sidebar-left"
+							aria-hidden="true"
+						></i>
+						<i class="codicon codicon-settings-gear" aria-hidden="true"></i>
+					</div>
+				</header>
+				<div class="workbench-body">
+					<aside
+						class="workbench-sidebar"
+						data-token="ide.sideBar ide.foreground ide.border"
+					>
+						<div class="explorer-title" data-token="ide.mutedForeground">
+							<span>Explorer</span>
+							<i class="codicon codicon-ellipsis" aria-hidden="true"></i>
+						</div>
+						<div class="explorer-tree">
+							<div class="explorer-section">
+								<i class="codicon codicon-chevron-down" aria-hidden="true"></i>
+								WORKSPACE
+							</div>
+							<div class="explorer-row" style="padding-left: 11px">
+								<i class="codicon codicon-chevron-down" aria-hidden="true"></i>
+								<i class="codicon codicon-folder-opened" aria-hidden="true"></i>
+								packages
+							</div>
+							<button
+								class="explorer-row selected"
+								data-feature="contrastBorders"
+								data-go-view="editing"
+								data-token="ide.listSelection ide.listSelectionForeground ide.focus"
+								style="
+									width: 100%;
+									padding-left: 24px;
+									border: 0;
+									color: inherit;
+								"
+								type="button"
+							>
+								<i class="codicon codicon-chevron-down" aria-hidden="true"></i>
+								<i class="codicon codicon-folder-opened" aria-hidden="true"></i>
+								shared
+								<span
+									class="explorer-decoration web-warning"
+									data-token="web.warning"
+									>M</span
+								>
+							</button>
+							<div class="explorer-row" style="padding-left: 39px">
+								<i class="codicon codicon-json" aria-hidden="true"></i>
+								theme.json
+								<span
+									class="explorer-decoration web-warning"
+									data-token="web.warning"
+									>M</span
+								>
+							</div>
+							<div class="explorer-row" style="padding-left: 39px">
+								<i class="codicon codicon-symbol-file" aria-hidden="true"></i>
+								theme.ts
+								<span
+									class="explorer-decoration web-success"
+									data-token="web.success"
+									>U</span
+								>
+							</div>
+							<div class="explorer-row" style="padding-left: 39px">
+								<i class="codicon codicon-symbol-file" aria-hidden="true"></i>
+								preview.ts
+								<span
+									class="explorer-decoration web-danger"
+									data-token="web.destructive"
+									>!</span
+								>
+							</div>
+							<div
+								class="explorer-row ignored"
+								data-token="ide.ignored"
+								style="padding-left: 24px"
+							>
+								<i class="codicon codicon-folder" aria-hidden="true"></i>
+								node_modules
+							</div>
+							<div class="explorer-row" style="padding-left: 11px">
+								<i class="codicon codicon-markdown" aria-hidden="true"></i>
+								README.md
+								<span class="explorer-decoration web-info" data-token="web.info"
+									>i</span
+								>
+							</div>
+						</div>
+						<nav
+							class="workbench-activity"
+							data-token="ide.activityBar ide.activityBarInactive ide.border"
+							aria-label="Workbench views"
+						>
+							<button
+								class="active icon-only"
+								data-feature="activityBarIndicator"
+								data-go-view="workbench"
+								data-token="ide.focus ide.foreground"
+								type="button"
+								title="Explorer"
+							>
+								<i class="codicon codicon-files" aria-hidden="true"></i>
+							</button>
+							<button
+								class="icon-only"
+								data-go-view="editing"
+								type="button"
+								title="Search"
+							>
+								<i class="codicon codicon-search" aria-hidden="true"></i>
+							</button>
+							<button
+								class="icon-only"
+								data-go-view="diff"
+								type="button"
+								title="Source Control"
+							>
+								<i
+									class="codicon codicon-source-control"
+									aria-hidden="true"
+								></i>
+							</button>
+							<button
+								class="icon-only"
+								data-go-view="terminal"
+								type="button"
+								title="Terminal"
+							>
+								<i class="codicon codicon-terminal" aria-hidden="true"></i>
+							</button>
+						</nav>
+					</aside>
+					<main class="workbench-content" data-preview-slot></main>
+				</div>
+				<footer
+					class="workbench-status"
+					data-token="ide.statusBar ide.statusBarForeground ide.border"
+				>
+					<span>
+						<i class="codicon codicon-git-branch" aria-hidden="true"></i>
+						main*
+					</span>
+					<span>
+						<i class="codicon codicon-sync" aria-hidden="true"></i>
+						0 / 2
+					</span>
+					<span class="web-danger" data-token="web.destructive">
+						<i class="codicon codicon-error" aria-hidden="true"></i>
+						1
+					</span>
+					<span class="web-warning" data-token="web.warning">
+						<i class="codicon codicon-warning" aria-hidden="true"></i>
+						2
+					</span>
+					<span class="right">Ln 18, Col 27ã€€UTF-8ã€€TypeScript</span>
+				</footer>
+			</div>
+		</template>
+
+		<template
+			data-preview-state
+			data-surface="ide"
+			data-view="details"
+			data-label="Workbench details"
+		>
+			<div class="ide-details" data-token="ide.editor">
+				<section
+					class="ide-detail-card"
+					data-token="ide.widget ide.border ide.shadow ide.foreground"
+				>
+					<header
+						class="ide-detail-title"
+						data-token="ide.settingsHeader ide.separator"
+					>
+						<span>Editor settings</span><span>Modified</span>
+					</header>
+					<div class="ide-setting" data-token="ide.settingsModified">
+						<div>
+							<b>Font Size</b>
+							<div data-token="ide.mutedForeground">
+								Controls the font size in pixels.
+							</div>
+						</div>
+						<div
+							class="ide-setting-control"
+							data-token="ide.inputBackground ide.inputForeground ide.inputBorder"
+						>
+							14
+						</div>
+					</div>
+					<div class="ide-setting" data-token="ide.settingsModified">
+						<div>
+							<b>Color Theme</b>
+							<div data-token="ide.mutedForeground">
+								Specifies the workbench color theme.
+							</div>
+						</div>
+						<div
+							class="ide-setting-control"
+							data-token="ide.dropdown ide.dropdownForeground ide.inputBorder"
+						>
+							Composery Dark
+						</div>
+					</div>
+					<div
+						class="ide-drop-target"
+						data-token="ide.dropBackground ide.focus"
+					>
+						Drop a file here to open it
+					</div>
+				</section>
+				<div class="ide-detail-stack">
+					<section
+						class="ide-detail-card"
+						data-token="ide.widget ide.border ide.shadow"
+					>
+						<header class="ide-detail-title" data-token="ide.separator">
+							<span>Agent chat</span>
+							<i class="codicon codicon-ellipsis" aria-hidden="true"></i>
+						</header>
+						<div class="ide-chat">
+							<div
+								class="ide-chat-command"
+								data-token="ide.chatAccent ide.chatAccentForeground"
+							>
+								/fix explain the failed check
+							</div>
+							<div>
+								Updated
+								<span class="ide-chat-edited" data-token="ide.chatEdited"
+									>theme.mjs</span
+								>
+								and verified
+								<code
+									class="ide-preformatted"
+									data-token="ide.preformatted ide.preformattedForeground"
+									>pnpm test</code
+								>.
+							</div>
+						</div>
+					</section>
+					<section
+						class="ide-detail-card"
+						data-token="ide.widget ide.border ide.shadow"
+					>
+						<header class="ide-detail-title" data-token="ide.separator">
+							<span>Debug session</span><span>Node</span>
+						</header>
+						<div class="ide-debug-toolbar" data-token="ide.debugToolbar">
+							<i
+								class="codicon codicon-debug-continue"
+								aria-label="Continue"
+							></i>
+							<i
+								class="codicon codicon-debug-step-over"
+								aria-label="Step over"
+							></i>
+							<i
+								class="codicon codicon-debug-step-into"
+								aria-label="Step into"
+							></i>
+							<i
+								class="codicon codicon-debug-step-out"
+								aria-label="Step out"
+							></i>
+							<i class="codicon codicon-debug-stop" aria-label="Stop"></i>
+						</div>
+						<div
+							class="ide-debug-status"
+							data-token="ide.debugStatus ide.debugStatusForeground"
+						>
+							Paused on breakpoint Â· localhost:7331
+						</div>
+					</section>
+				</div>
+			</div>
+		</template>
+
+		<template
+			data-preview-state
+			data-surface="ide"
+			data-view="workbench"
+			data-label="Workbench"
+		>
+			<div class="ide-split">
+				<section class="ide-pane" data-token="ide.editor">
+					<div class="ide-tabs" data-token="ide.tabBar ide.tabBorder">
+						<button
+							class="ide-editor-tab hover-sample"
+							data-go-view="editing"
+							data-token="ide.tabInactive ide.tabInactiveForeground ide.tabHover ide.tabBorder"
+							type="button"
+						>
+							Welcome
+						</button>
+						<button
+							class="ide-editor-tab active"
+							data-feature="activeTabIndicator"
+							data-token="ide.tabActive ide.tabActiveForeground ide.focus ide.tabBorder"
+							type="button"
+						>
+							<i class="codicon codicon-markdown" aria-hidden="true"></i>
+							2026-07-28.md
+							<i class="codicon codicon-close" aria-label="Close"></i>
+						</button>
+					</div>
+					<article class="ide-document" data-token="ide.editor ide.foreground">
+						<h2>Tuesday, 28 July</h2>
+						<p>
+							<b>Money</b> â‚¬4,210 invoiced this month. Two payments landed
+							overnight.
+						</p>
+						<h3>Needs you (3)</h3>
+						<ul>
+							<li>Review the Northwind proposal before Wednesday.</li>
+							<li>
+								The Acme invoice is six days overdue. Draft saved in
+								<code data-token="ide.selection">drafts/acme-chase.md</code>.
+							</li>
+							<li>Choose whether to renew the design subscription.</li>
+						</ul>
+						<h3>Worth knowing</h3>
+						<p>Two calls after 14:00. Your morning is clear.</p>
+					</article>
+				</section>
+				<section
+					class="ide-terminal-pane"
+					data-token="ide.panel ide.foreground ide.border"
+				>
+					<div class="ide-panel-title" data-feature="panelTitleIndicator">
+						<span>TERMINAL</span>
+						<span class="ide-panel-actions">
+							<i class="codicon codicon-add" aria-label="New terminal"></i>
+							<span>1: Agent</span>
+							<i
+								class="codicon codicon-chevron-down"
+								aria-label="Terminal menu"
+							></i>
+							<i class="codicon codicon-ellipsis" aria-label="More actions"></i>
+						</span>
+					</div>
+					<div class="ide-terminal" data-token="ide.panel ide.foreground">
+						<div><b>Claude Code</b> <span class="dim">v2.1.207</span></div>
+						<div class="dim">Fable 5 Â· Claude Pro</div>
+						<br />
+						<div>â€º Flag any invoice more than five days overdue.</div>
+						<br />
+						<div class="ide-terminal-status">
+							<i
+								class="codicon codicon-pass-filled web-success"
+								data-token="web.success"
+								aria-hidden="true"
+							></i>
+							Read 2 files and drafted a chase email.
+						</div>
+						<div class="dim">Wrote drafts/acme-chase.md for your approval.</div>
+						<br />
+						<div class="ide-terminal-status">
+							<i
+								class="codicon codicon-sync codicon-modifier-spin web-info"
+								data-token="web.info"
+								aria-hidden="true"
+							></i>
+							Workingâ€¦
+							<span class="dim">29s Â· 811 tokens</span>
+						</div>
+					</div>
+				</section>
+			</div>
+		</template>
+
+		<template
+			data-preview-state
+			data-surface="ide"
+			data-view="editing"
+			data-label="Editing"
+		>
+			<div class="ide-editor-stack">
+				<div
+					class="ide-tabs"
+					data-feature="tabBorders"
+					data-token="ide.tabBar ide.tabBorder"
+				>
+					<button
+						class="ide-editor-tab active"
+						data-token="ide.tabActive ide.tabActiveForeground ide.focus ide.tabBorder"
+						type="button"
+					>
+						<i class="codicon codicon-symbol-file" aria-hidden="true"></i>
+						theme-preview.ts
+						<i class="codicon codicon-circle-filled" aria-label="Unsaved"></i>
+					</button>
+					<button
+						class="ide-editor-tab"
+						data-go-view="diff"
+						data-token="ide.tabInactive ide.tabInactiveForeground ide.tabBorder"
+						type="button"
+					>
+						<i class="codicon codicon-symbol-file" aria-hidden="true"></i>
+						theme.ts
+						<i class="codicon codicon-close" aria-label="Close"></i>
+					</button>
+				</div>
+				<div
+					class="ide-breadcrumbs"
+					data-token="ide.breadcrumb ide.breadcrumbForeground"
+				>
+					packages â€º shared â€º scripts â€º colors â€º
+					<span class="syn-function" data-token="ide.function"
+						>paintPreview</span
+					>
+				</div>
+				<div class="ide-code" data-token="ide.editor ide.foreground">
+					<div class="code-scroll">
+						<i class="editor-ruler" data-token="ide.ruler"></i>
+						<div class="editor-line">
+							<span class="editor-number" data-token="ide.lineNumber">1</span
+							><i></i
+							><span
+								><span class="syn-keyword" data-token="ide.keyword"
+									>import</span
+								>
+								<span class="syn-punctuation" data-token="ide.punctuation"
+									>{</span
+								>
+								<span class="syn-type" data-token="ide.type">Theme</span>
+								<span class="syn-punctuation" data-token="ide.punctuation"
+									>}</span
+								>
+								<span class="syn-keyword" data-token="ide.keyword">from</span>
+								<span class="syn-string" data-token="ide.string">"./theme"</span
+								><span class="syn-punctuation" data-token="ide.punctuation"
+									>;</span
+								></span
+							>
+						</div>
+						<div class="editor-line">
+							<span class="editor-number" data-token="ide.lineNumber">2</span
+							><i></i><span></span>
+						</div>
+						<div class="editor-line">
+							<span class="editor-number" data-token="ide.lineNumber">3</span
+							><i
+								class="editor-gutter modified"
+								data-token="ide.gutterModified"
+							></i
+							><span
+								><span class="syn-decorator" data-token="ide.decorator"
+									>@tracked</span
+								></span
+							>
+						</div>
+						<div class="editor-line">
+							<span class="editor-number" data-token="ide.lineNumber">4</span
+							><i></i
+							><span
+								><span class="syn-keyword" data-token="ide.keyword"
+									>export class</span
+								>
+								<span class="syn-type" data-token="ide.type">Preview</span>
+								<span
+									class="syn-punctuation editor-bracket"
+									data-token="ide.punctuation ide.bracketMatch"
+									>{</span
+								></span
+							>
+						</div>
+						<div class="editor-line">
+							<span class="editor-number" data-token="ide.lineNumber">5</span
+							><i class="editor-gutter added" data-token="ide.gutterAdded"></i
+							><span
+								><b
+									class="indent-guide active"
+									data-token="ide.activeIndentGuide"
+								></b
+								><span class="syn-keyword" data-token="ide.keyword"
+									>static readonly</span
+								>
+								<span class="syn-constant" data-token="ide.constant"
+									>SCHEMES</span
+								>
+								<span class="syn-operator" data-token="ide.operator">=</span>
+								<span class="syn-punctuation" data-token="ide.punctuation"
+									>[</span
+								><span class="syn-string" data-token="ide.string">"light"</span
+								><span class="syn-punctuation" data-token="ide.punctuation"
+									>,</span
+								>
+								<span class="syn-string" data-token="ide.string">"dark"</span
+								><span class="syn-punctuation" data-token="ide.punctuation"
+									>];</span
+								></span
+							>
+						</div>
+						<div class="editor-line current" data-token="ide.listHover">
+							<span
+								class="editor-number"
+								data-token="ide.lineNumber ide.activeLineNumber"
+								>6</span
+							><i></i
+							><span
+								><b class="indent-guide" data-token="ide.indentGuide"></b
+								><span class="syn-function" data-token="ide.function"
+									>paintPreview</span
+								><span class="syn-punctuation" data-token="ide.punctuation"
+									>(</span
+								><span class="syn-parameter" data-token="ide.parameter"
+									>theme</span
+								><span class="syn-punctuation" data-token="ide.punctuation"
+									>:</span
+								>
+								<span class="syn-type" data-token="ide.type">Theme</span
+								><span class="syn-punctuation" data-token="ide.punctuation"
+									>) {</span
+								><span class="editor-cursor" data-token="ide.cursor"></span
+							></span>
+						</div>
+						<div class="editor-line">
+							<span class="editor-number" data-token="ide.lineNumber">7</span
+							><i></i
+							><span
+								><b class="indent-guide" data-token="ide.indentGuide"></b
+								><b
+									class="indent-guide active"
+									data-token="ide.activeIndentGuide"
+								></b
+								><span class="syn-keyword" data-token="ide.keyword">const</span>
+								<span
+									class="syn-variable editor-word-highlight"
+									data-token="ide.variable ide.wordHighlight"
+									>ratio</span
+								>
+								<span class="syn-operator" data-token="ide.operator">=</span>
+								<span class="syn-number" data-token="ide.number">0.85</span
+								><span class="syn-punctuation" data-token="ide.punctuation"
+									>;</span
+								></span
+							>
+						</div>
+						<div class="editor-line">
+							<span class="editor-number" data-token="ide.lineNumber">8</span
+							><i></i
+							><span
+								><b class="indent-guide" data-token="ide.indentGuide"></b
+								><b class="indent-guide" data-token="ide.indentGuide"></b
+								><span class="syn-keyword" data-token="ide.keyword">const</span>
+								<span
+									class="syn-variable editor-selection-highlight"
+									data-token="ide.variable ide.selectionHighlight"
+									>escaped</span
+								>
+								<span class="syn-operator" data-token="ide.operator">=</span>
+								<span class="syn-string" data-token="ide.string"
+									>"line<span class="syn-escape" data-token="ide.escape"
+										>\n</span
+									>"</span
+								><span class="syn-punctuation" data-token="ide.punctuation"
+									>;</span
+								></span
+							>
+						</div>
+						<div class="editor-line">
+							<span class="editor-number" data-token="ide.lineNumber">9</span
+							><i></i
+							><span
+								><b class="indent-guide" data-token="ide.indentGuide"></b
+								><b class="indent-guide" data-token="ide.indentGuide"></b
+								><span class="syn-keyword" data-token="ide.keyword">if</span>
+								<span class="syn-punctuation" data-token="ide.punctuation"
+									>(</span
+								><span
+									class="syn-regex editor-find-highlight"
+									data-token="ide.regex ide.findMatchHighlight"
+									>/^#[0-9a-f]+$/i</span
+								><span class="syn-punctuation" data-token="ide.punctuation"
+									>.</span
+								><span class="syn-function" data-token="ide.function">test</span
+								><span class="syn-punctuation" data-token="ide.punctuation"
+									>(</span
+								><span class="syn-variable" data-token="ide.variable"
+									>escaped</span
+								><span class="syn-punctuation" data-token="ide.punctuation"
+									>))</span
+								></span
+							>
+						</div>
+						<div class="editor-line">
+							<span class="editor-number" data-token="ide.lineNumber">10</span
+							><i></i
+							><span
+								><b class="indent-guide" data-token="ide.indentGuide"></b
+								><b class="indent-guide" data-token="ide.indentGuide"></b
+								><span class="syn-label" data-token="ide.label">next:</span>
+								<span class="syn-keyword" data-token="ide.keyword">return</span>
+								<span class="syn-namespace" data-token="ide.namespace"
+									>Color</span
+								><span class="syn-punctuation" data-token="ide.punctuation"
+									>.</span
+								><span class="syn-function" data-token="ide.function">mix</span
+								><span class="syn-punctuation" data-token="ide.punctuation"
+									>(</span
+								><span
+									class="syn-parameter editor-selection"
+									data-token="ide.parameter ide.selection"
+									>theme</span
+								><span class="syn-punctuation" data-token="ide.punctuation"
+									>.</span
+								><span class="syn-property" data-token="ide.property"
+									>primary</span
+								><span class="syn-punctuation" data-token="ide.punctuation"
+									>,</span
+								>
+								<span class="syn-variable" data-token="ide.variable">ratio</span
+								><span class="syn-punctuation" data-token="ide.punctuation"
+									>);</span
+								></span
+							>
+						</div>
+						<div class="editor-line">
+							<span class="editor-number" data-token="ide.lineNumber">11</span
+							><i></i
+							><span
+								><b class="indent-guide" data-token="ide.indentGuide"></b
+								><span class="syn-punctuation" data-token="ide.punctuation"
+									>}</span
+								></span
+							>
+						</div>
+						<div class="editor-line">
+							<span class="editor-number" data-token="ide.lineNumber">12</span
+							><i></i
+							><span
+								><span class="syn-punctuation" data-token="ide.punctuation"
+									>}</span
+								></span
+							>
+						</div>
+						<div class="editor-line">
+							<span class="editor-number" data-token="ide.lineNumber">13</span
+							><i></i
+							><span
+								><span class="syn-keyword">const</span>
+								<span
+									class="syn-variable"
+									data-feature="semanticHighlighting"
+									data-token="ide.variable ide.type"
+									>LegacyTheme</span
+								>
+								<span class="syn-operator">=</span>
+								<span class="syn-variable" data-token="ide.variable"
+									>oldTheme</span
+								><span class="syn-punctuation">;</span></span
+							>
+						</div>
+						<div class="editor-line">
+							<span class="editor-number" data-token="ide.lineNumber">14</span
+							><i></i
+							><span
+								><span class="syn-comment" data-token="ide.comment"
+									>// The HTML preview exercises tags and attributes too.</span
+								></span
+							>
+						</div>
+						<div class="editor-line">
+							<span class="editor-number" data-token="ide.lineNumber">15</span
+							><i></i
+							><span
+								><span class="syn-punctuation" data-token="ide.punctuation"
+									>&lt;</span
+								><span class="syn-tag" data-token="ide.tag">button</span>
+								<span class="syn-attribute" data-token="ide.attribute"
+									>aria-label</span
+								><span class="syn-operator" data-token="ide.operator">=</span
+								><span
+									class="syn-string editor-find"
+									data-token="ide.string ide.findMatch"
+									>"Save theme"</span
+								><span class="syn-punctuation" data-token="ide.punctuation"
+									>&gt;</span
+								>Save<span class="syn-punctuation" data-token="ide.punctuation"
+									>&lt;/</span
+								><span class="syn-tag" data-token="ide.tag">button</span
+								><span class="syn-punctuation" data-token="ide.punctuation"
+									>&gt;</span
+								><span class="editor-whitespace" data-token="ide.whitespace"
+									>Â·Â·Â·</span
+								></span
+							>
+						</div>
+					</div>
+					<div class="ide-minimap" data-token="ide.border">
+						<i class="syn-keyword" style="width: 76%"></i>
+						<i class="syn-string" style="width: 58%"></i>
+						<i class="syn-function" style="width: 84%"></i>
+						<i class="syn-type" style="width: 45%"></i>
+						<i class="syn-comment" style="width: 90%"></i>
+						<div class="scrollbar-samples">
+							<i class="scrollbar-normal" data-token="ide.scrollbar"></i>
+							<i class="scrollbar-hover" data-token="ide.scrollbarHover"></i>
+							<i class="scrollbar-active" data-token="ide.scrollbarActive"></i>
+						</div>
+					</div>
+				</div>
+			</div>
+		</template>
+
+		<template
+			data-preview-state
+			data-surface="ide"
+			data-view="diff"
+			data-label="Diff"
+		>
+			<div class="ide-diff">
+				<div class="ide-tabs" data-token="ide.tabBar ide.tabBorder">
+					<button
+						class="ide-editor-tab active"
+						data-token="ide.tabActive ide.tabActiveForeground ide.focus ide.tabBorder"
+						type="button"
+					>
+						<i class="codicon codicon-diff" aria-hidden="true"></i>
+						theme.json / theme.json
+					</button>
+					<button
+						class="ide-editor-tab"
+						data-go-view="editing"
+						data-token="ide.tabInactive ide.tabInactiveForeground ide.tabBorder"
+						type="button"
+					>
+						theme-preview.ts
+					</button>
+				</div>
+				<div class="diff-columns" data-token="ide.editor ide.foreground">
+					<div class="diff-side">
+						<div class="diff-line">
+							<span class="editor-number" data-token="ide.lineNumber">18</span
+							><i></i
+							><span>
+								<span class="syn-property">"primary"</span>:
+								<span class="syn-string">"#111111"</span>,</span
+							>
+						</div>
+						<div class="diff-line removed" data-token="ide.diffRemoved">
+							<span class="editor-number" data-token="ide.lineNumber">19</span
+							><i
+								class="editor-gutter deleted"
+								data-token="ide.gutterDeleted"
+							></i
+							><span>
+								<span class="syn-property">"warning"</span>:
+								<span class="syn-string">"#eab308"</span>,</span
+							>
+						</div>
+						<div class="diff-line removed" data-token="ide.diffRemoved">
+							<span class="editor-number" data-token="ide.lineNumber">20</span
+							><i
+								class="editor-gutter deleted"
+								data-token="ide.gutterDeleted"
+							></i
+							><span>
+								<span class="syn-property">"border"</span>:
+								<span class="syn-string">"#dedede"</span></span
+							>
+						</div>
+						<div class="diff-line">
+							<span class="editor-number" data-token="ide.lineNumber">21</span
+							><i></i><span> }</span>
+						</div>
+					</div>
+					<div class="diff-side">
+						<div class="diff-line">
+							<span class="editor-number" data-token="ide.lineNumber">18</span
+							><i></i
+							><span>
+								<span class="syn-property">"primary"</span>:
+								<span class="syn-string">"#171717"</span>,</span
+							>
+						</div>
+						<div class="diff-line inserted" data-token="ide.diffInserted">
+							<span class="editor-number" data-token="ide.lineNumber">19</span
+							><i class="editor-gutter added" data-token="ide.gutterAdded"></i
+							><span>
+								<span class="syn-property">"warning"</span>:
+								<span class="syn-string">"#dc8a06"</span>,</span
+							>
+						</div>
+						<div class="diff-line inserted" data-token="ide.diffInserted">
+							<span class="editor-number" data-token="ide.lineNumber">20</span
+							><i
+								class="editor-gutter modified"
+								data-token="ide.gutterModified"
+							></i
+							><span>
+								<span class="syn-property">"border"</span>:
+								<span class="syn-string">"#e5e5e5"</span></span
+							>
+						</div>
+						<div class="diff-line">
+							<span class="editor-number" data-token="ide.lineNumber">21</span
+							><i></i><span> }</span>
+						</div>
+					</div>
+				</div>
+			</div>
+		</template>
+
+		<template
+			data-preview-state
+			data-surface="ide"
+			data-view="widgets"
+			data-label="Widgets"
+		>
+			<div class="ide-widget-stage" data-token="ide.editor">
+				<div class="widget-code" data-token="ide.mutedForeground">
+					export const theme = {<br />
+					ã€€background: "#ffffff",<br />
+					ã€€foreground: "#000000"<br />
+					};
+				</div>
+				<div
+					class="ide-quick-input"
+					data-feature="shadows"
+					data-token="ide.widget ide.border ide.shadow ide.foreground"
+				>
+					<div
+						class="ide-input focused"
+						data-feature="controlBorders"
+						data-token="ide.inputBackground ide.inputBorder ide.inputForeground ide.placeholder ide.focus"
+					>
+						&gt; theme
+					</div>
+					<div
+						class="ide-quick-row selected"
+						data-token="ide.listSelection ide.listSelectionForeground"
+					>
+						<span>Preferences: Color Theme</span
+						><span class="ide-badge" data-token="ide.badge ide.badgeForeground"
+							>3</span
+						>
+					</div>
+					<div class="ide-quick-row" data-token="ide.mutedForeground">
+						<span>Inspect Editor Tokens and Scopes</span>
+					</div>
+					<div class="ide-quick-row" data-token="ide.mutedForeground">
+						<span>Open Settings (JSON)</span><span>Ctrl+,</span>
+					</div>
+				</div>
+				<div
+					class="ide-dropdown"
+					data-token="ide.dropdown ide.dropdownForeground ide.inputBorder ide.shadow"
+				>
+					<div
+						class="selected"
+						data-token="ide.listSelection ide.listSelectionForeground"
+					>
+						Composery Dark
+					</div>
+					<div>Composery Light</div>
+					<div>High Contrast</div>
+				</div>
+				<div
+					class="ide-notification"
+					data-token="ide.widget ide.border ide.shadow ide.foreground"
+				>
+					<div class="ide-notification-message">
+						<i
+							class="codicon codicon-info web-info"
+							data-token="web.info"
+							aria-hidden="true"
+						></i>
+						A new Composery build is available.
+						<a data-token="ide.link">Release notes</a>
+					</div>
+					<div class="ide-notification-actions">
+						<button
+							class="ide-button secondary"
+							data-token="ide.secondaryButton ide.secondaryButtonForeground ide.secondaryButtonHover"
+							type="button"
+						>
+							Later
+						</button>
+						<button
+							class="ide-button"
+							data-token="ide.button ide.buttonForeground ide.buttonHover"
+							type="button"
+						>
+							Reload
+						</button>
+					</div>
+				</div>
+			</div>
+		</template>
+
+		<template
+			data-preview-state
+			data-surface="ide"
+			data-view="terminal"
+			data-label="Terminal"
+		>
+			<section
+				class="ide-terminal-pane"
+				data-token="ide.panel ide.foreground"
+				style="height: 100%"
+			>
+				<div class="ide-panel-title">
+					<span>TERMINAL</span>
+					<span class="ide-panel-actions">
+						<i class="codicon codicon-add" aria-label="New terminal"></i>
+						<span>1: colors</span>
+						<i class="codicon codicon-ellipsis" aria-label="More actions"></i>
+					</span>
+				</div>
+				<div class="ide-terminal">
+					<div>
+						<span class="syn-string">user@composery</span>:<span
+							class="syn-type"
+							>~/composery</span
+						>$ pnpm check
+					</div>
+					<div class="ide-terminal-status">
+						<i
+							class="codicon codicon-pass-filled web-success"
+							data-token="web.success"
+							aria-hidden="true"
+						></i>
+						shared theme generated
+					</div>
+					<div class="ide-terminal-status">
+						<i
+							class="codicon codicon-warning web-warning"
+							data-token="web.warning"
+							aria-hidden="true"
+						></i>
+						two files modified
+					</div>
+					<div class="ide-terminal-status">
+						<i
+							class="codicon codicon-error web-danger"
+							data-token="web.destructive"
+							aria-hidden="true"
+						></i>
+						invalid token example
+					</div>
+					<div class="ide-terminal-status">
+						<i
+							class="codicon codicon-info web-info"
+							data-token="web.info"
+							aria-hidden="true"
+						></i>
+						preview refreshed
+					</div>
+					<div class="ansi-table" aria-label="ANSI terminal colors">
+						<span
+							style="color: var(--ide-ansi-black)"
+							data-token="ide.ansiBlack"
+							>black</span
+						>
+						<span class="web-danger" data-token="web.destructive">red</span>
+						<span class="web-success" data-token="web.success">green</span>
+						<span class="web-warning" data-token="web.warning">yellow</span>
+						<span class="web-info" data-token="web.info">blue</span>
+						<span
+							style="color: var(--ide-ansi-magenta)"
+							data-token="ide.ansiMagenta"
+							>magenta</span
+						>
+						<span style="color: var(--ide-ansi-cyan)" data-token="ide.ansiCyan"
+							>cyan</span
+						>
+						<span
+							style="color: var(--ide-ansi-white)"
+							data-token="ide.ansiWhite"
+							>white</span
+						>
+						<span
+							style="color: var(--ide-ansi-bright-black)"
+							data-token="ide.ansiBrightBlack"
+							>bright black</span
+						>
+						<span
+							style="color: var(--ide-ansi-bright-red)"
+							data-token="ide.ansiBrightRed"
+							>bright red</span
+						>
+						<span
+							style="color: var(--ide-ansi-bright-green)"
+							data-token="ide.ansiBrightGreen"
+							>bright green</span
+						>
+						<span
+							style="color: var(--ide-ansi-bright-yellow)"
+							data-token="ide.ansiBrightYellow"
+							>bright yellow</span
+						>
+						<span
+							style="color: var(--ide-ansi-bright-blue)"
+							data-token="ide.ansiBrightBlue"
+							>bright blue</span
+						>
+						<span
+							style="color: var(--ide-ansi-bright-magenta)"
+							data-token="ide.ansiBrightMagenta"
+							>bright magenta</span
+						>
+						<span
+							style="color: var(--ide-ansi-bright-cyan)"
+							data-token="ide.ansiBrightCyan"
+							>bright cyan</span
+						>
+						<span
+							style="color: var(--ide-ansi-bright-white)"
+							data-token="ide.ansiBrightWhite"
+							>bright white</span
+						>
+					</div>
+				</div>
+			</section>
+		</template>
+
+		<script type="module">
+			const theme = await fetch("/theme").then((response) => response.json());
+			const roles = document.querySelector("#roles");
+			const stage = document.querySelector("#stage");
+			const status = document.querySelector("#status");
+			let saved = structuredClone(theme);
+
+			// What you were last looking at, so a reload puts you back.
+			const STORE = window.COLORS_STORE;
+			const remembered = (() => {
+				try {
+					return JSON.parse(localStorage.getItem(STORE) ?? "{}");
+				} catch {
+					return {};
+				}
+			})();
+			const surfaces = ["web", "ide"];
+			let area = surfaces.includes(remembered.area) ? remembered.area : "web";
+			let scheme = remembered.scheme === "dark" ? "dark" : "light";
+			let hideLinked = remembered.hideLinked === true;
+			let onlyArea = remembered.onlyArea === true;
+			const fallbackViews = {
+				web: "boxes",
+				ide: "workbench"
+			};
+			const views = {
+				...fallbackViews,
+				...(remembered.views ?? {})
+			};
+			let activeToken =
+				typeof remembered.activeToken === "string"
+					? remembered.activeToken
+					: null;
+			const detached = new Set(
+				Array.isArray(remembered.detached) ? remembered.detached : []
+			);
+
+			function remember() {
+				localStorage.setItem(
+					STORE,
+					JSON.stringify({
+						area,
+						scheme,
+						hideLinked,
+						onlyArea,
+						views,
+						activeToken,
+						detached: [...detached],
+						vars: painted
+					})
+				);
+			}
+
+			const previewStates = [
+				...document.querySelectorAll("template[data-preview-state]")
+			];
+			const previewShells = new Map(
+				[...document.querySelectorAll("template[data-preview-shell]")].map(
+					(template) => [template.dataset.previewShell, template]
+				)
+			);
+			const tokenSet = (root) =>
+				new Set(
+					[...root.querySelectorAll("[data-token]")]
+						.flatMap((element) => element.dataset.token.split(/\s+/))
+						.filter(Boolean)
+				);
+			const surfaceTokens = new Map(
+				surfaces.map((surface) => {
+					const shell = previewShells.get(surface);
+					const tokens = new Set(shell ? tokenSet(shell.content) : []);
+					for (const template of previewStates)
+						if (template.dataset.surface === surface)
+							for (const token of tokenSet(template.content)) tokens.add(token);
+					return [surface, tokens];
+				})
+			);
+
+			const rows = [];
+			const sections = [];
+			const labels = new Map();
+			const seen = new Set();
+			const history = [];
+			const future = [];
+			const undoButton = document.querySelector("#undo");
+			const redoButton = document.querySelector("#redo");
+			const resetAllButton = document.querySelector("#reset-all");
+			let editing = [];
+			let pending = null;
+			let painted = {};
+
+			const snapshot = () => structuredClone(theme);
+			const startEdit = (label) => (pending = label);
+
+			function commitOnce() {
+				if (pending === null) return;
+				history.push({ theme: snapshot(), label: pending });
+				pending = null;
+				if (history.length > 200) history.shift();
+				future.length = 0;
+			}
+
+			// A gesture that ends where it started leaves no entry behind.
+			function settle() {
+				pending = null;
+				const top = history.at(-1);
+				if (!top || JSON.stringify(top.theme) !== JSON.stringify(theme)) return;
+				history.pop();
+				paint();
+			}
+
+			function apply(next) {
+				for (const source of ["web", "ide"])
+					for (const values of ["light", "dark"])
+						Object.assign(theme[source][values], next[source][values]);
+				Object.assign(theme.ide.features, next.ide.features);
+			}
+
+			function step(from, to) {
+				const previous = from.pop();
+				if (!previous) return;
+				to.push({ theme: snapshot(), label: previous.label });
+				apply(previous.theme);
+				document.activeElement?.blur();
+				pending = null;
+				paint();
+			}
+
+			undoButton.onclick = () => step(history, future);
+			redoButton.onclick = () => step(future, history);
+			addEventListener("keydown", (event) => {
+				if (!event.ctrlKey && !event.metaKey) return;
+				const key = event.key.toLowerCase();
+				const redo = key === "y" || (key === "z" && event.shiftKey);
+				if (!redo && key !== "z") return;
+				event.preventDefault();
+				step(redo ? future : history, redo ? history : future);
+			});
+
+			const FEATURES = [
+				[
+					"surfaceBorders",
+					"Surface borders",
+					"Draw separators around workbench regions and floating widgets"
+				],
+				[
+					"controlBorders",
+					"Control borders",
+					"Outline inputs, dropdowns, checkboxes, and buttons"
+				],
+				["tabBorders", "Tab borders", "Separate editor and terminal tabs"],
+				[
+					"shadows",
+					"Shadows",
+					"Draw depth beneath widgets, menus, and scrolled content"
+				],
+				[
+					"activeTabIndicator",
+					"Active tab indicator",
+					"Mark the active editor and terminal tab"
+				],
+				[
+					"activityBarIndicator",
+					"Activity bar indicator",
+					"Mark the selected workbench view"
+				],
+				[
+					"panelTitleIndicator",
+					"Panel title indicator",
+					"Underline the active panel title"
+				],
+				[
+					"contrastBorders",
+					"Extra contrast borders",
+					"Outline active elements beyond their normal focus treatment"
+				],
+				[
+					"semanticHighlighting",
+					"Semantic highlighting",
+					"Let language servers refine syntax colours"
+				]
+			];
+
+			// Every role in one list, grouped by what it does, not by surface.
+			const GROUPS = [
+				[
+					"Surfaces",
+					[
+						["web", "background", "Page"],
+						["web", "header", "Header"],
+						["web", "footer", "Footer"],
+						["web", "sidebar", "Docs sidebar"],
+						["web", "card", "Card"],
+						["web", "dialog", "Dialog"],
+						["web", "popover", "Popover"],
+						["web", "button", "Button"],
+						["web", "buttonHover", "Button hover"],
+						["web", "buttonActive", "Button pressed"],
+						["web", "secondaryButton", "Secondary button"],
+						["web", "secondaryButtonHover", "Secondary button hover"],
+						["web", "secondaryButtonActive", "Secondary button pressed"],
+						["web", "badge", "Badge"],
+						["web", "badgeHover", "Badge hover"],
+						["web", "muted", "Muted"],
+						["web", "field", "Field"],
+						["web", "selected", "Selected item"],
+						["ide", "editor", "Editor"],
+						["ide", "titleBar", "Title bar"],
+						["ide", "activityBar", "Activity bar"],
+						["ide", "sideBar", "Side bar"],
+						["ide", "panel", "Panel"],
+						["ide", "statusBar", "Status bar"],
+						["ide", "breadcrumb", "Breadcrumb"],
+						["ide", "tabBar", "Tab bar"],
+						["ide", "tabActive", "Active tab"],
+						["ide", "tabInactive", "Inactive tab"],
+						["ide", "widget", "Widget"],
+						["ide", "inputBackground", "Editor input"],
+						["ide", "dropdown", "Dropdown"],
+						["ide", "badge", "Badge"],
+						["ide", "secondaryButton", "Secondary button"],
+						["ide", "secondaryButtonHover", "Secondary button hover"],
+						["ide", "button", "Button"],
+						["ide", "buttonHover", "Button hover"],
+						["ide", "listHover", "List hover"],
+						["ide", "listSelection", "List selection"],
+						["ide", "tabHover", "Tab hover"],
+						["ide", "chatAccent", "Chat accent"],
+						["ide", "debugToolbar", "Debug toolbar"],
+						["ide", "debugStatus", "Debug status bar"],
+						["ide", "preformatted", "Preformatted text background"],
+						["ide", "dropBackground", "Dragged item target"]
+					]
+				],
+				[
+					"Text",
+					[
+						["web", "foreground", "Page text"],
+						["web", "headerForeground", "Header text"],
+						["web", "footerForeground", "Footer text"],
+						["web", "sidebarForeground", "Sidebar text"],
+						["web", "cardForeground", "Card text"],
+						["web", "dialogForeground", "Dialog text"],
+						["web", "popoverForeground", "Popover text"],
+						["web", "buttonForeground", "Button text"],
+						["web", "secondaryButtonForeground", "Secondary button text"],
+						["web", "badgeForeground", "Badge text"],
+						["web", "mutedForeground", "Muted text"],
+						["web", "fieldForeground", "Field text"],
+						["web", "fieldPlaceholder", "Field placeholder"],
+						["web", "selectedForeground", "Selected item text"],
+						["ide", "foreground", "Editor text"],
+						["ide", "mutedForeground", "Editor muted text"],
+						["ide", "titleBarForeground", "Title bar text"],
+						["ide", "activityBarInactive", "Activity bar inactive"],
+						["ide", "statusBarForeground", "Status bar text"],
+						["ide", "breadcrumbForeground", "Breadcrumb text"],
+						["ide", "tabActiveForeground", "Active tab text"],
+						["ide", "tabInactiveForeground", "Inactive tab text"],
+						["ide", "placeholder", "Placeholder"],
+						["ide", "badgeForeground", "Badge text"],
+						["ide", "secondaryButtonForeground", "Secondary button text"],
+						["ide", "buttonForeground", "Button text"],
+						["ide", "inputForeground", "Input text"],
+						["ide", "dropdownForeground", "Dropdown text"],
+						["ide", "listSelectionForeground", "Selected item text"],
+						["ide", "activeLineNumber", "Active line number"],
+						["ide", "chatAccentForeground", "Chat accent text"],
+						["ide", "chatEdited", "Edited file"],
+						["ide", "debugStatusForeground", "Debug status text"],
+						["ide", "preformattedForeground", "Preformatted text"],
+						["ide", "settingsHeader", "Settings heading"]
+					]
+				],
+				[
+					"Actions",
+					[
+						["web", "hover", "Hover"],
+						["web", "focus", "Focus"],
+						["web", "link", "Link"],
+						["web", "control", "Native control accent"],
+						["ide", "link", "Link"]
+					]
+				],
+				[
+					"Status",
+					[
+						["web", "success", "Success"],
+						["web", "warning", "Warning"],
+						["web", "destructive", "Destructive"],
+						["web", "info", "Info"],
+						["ide", "settingsModified", "Modified setting"],
+						["ide", "gutterAdded", "Gutter added"],
+						["ide", "gutterModified", "Gutter modified"],
+						["ide", "gutterDeleted", "Gutter deleted"],
+						["ide", "diffInserted", "Diff inserted"],
+						["ide", "diffRemoved", "Diff removed"],
+						["ide", "ignored", "Ignored file"]
+					]
+				],
+				[
+					"Structure",
+					[
+						["web", "border", "Border"],
+						["web", "fieldBorder", "Field border"],
+						["web", "ring", "Focus ring"],
+						["web", "overlay", "Overlay"],
+						["web", "shadow", "Shadow"],
+						["web", "selection", "Text selection"],
+						["web", "scrollbarTrack", "Scrollbar track"],
+						["web", "scrollbar", "Scrollbar"],
+						["web", "scrollbarHover", "Scrollbar hover"],
+						["web", "scrollbarActive", "Scrollbar active"],
+						["ide", "border", "Editor border"],
+						["ide", "tabBorder", "Tab border"],
+						["ide", "inputBorder", "Editor input border"],
+						["ide", "focus", "Editor focus"],
+						["ide", "shadow", "Widget shadow"],
+						["ide", "separator", "Separator"]
+					]
+				],
+				[
+					"Editing",
+					[
+						["ide", "selection", "Selection"],
+						["ide", "selectionHighlight", "Selection highlight"],
+						["ide", "wordHighlight", "Word highlight"],
+						["ide", "cursor", "Cursor"],
+						["ide", "findMatch", "Find match"],
+						["ide", "findMatchHighlight", "Find match highlight"],
+						["ide", "indentGuide", "Indent guide"],
+						["ide", "activeIndentGuide", "Active indent guide"],
+						["ide", "whitespace", "Whitespace"],
+						["ide", "ruler", "Ruler"],
+						["ide", "bracketMatch", "Bracket match"],
+						["ide", "scrollbar", "Scrollbar"],
+						["ide", "scrollbarHover", "Scrollbar hover"],
+						["ide", "scrollbarActive", "Scrollbar active"],
+						["ide", "lineNumber", "Line number"]
+					]
+				],
+				[
+					"Syntax",
+					[
+						["ide", "keyword", "Keyword"],
+						["ide", "operator", "Operator"],
+						["ide", "string", "String"],
+						["ide", "escape", "Escape"],
+						["ide", "regex", "Regex"],
+						["ide", "number", "Number"],
+						["ide", "function", "Function"],
+						["ide", "decorator", "Decorator"],
+						["ide", "type", "Type"],
+						["ide", "namespace", "Namespace"],
+						["ide", "tag", "Tag"],
+						["ide", "attribute", "Attribute"],
+						["ide", "variable", "Variable"],
+						["ide", "property", "Property"],
+						["ide", "parameter", "Parameter"],
+						["ide", "constant", "Constant"],
+						["ide", "label", "Label"],
+						["ide", "punctuation", "Punctuation"],
+						["ide", "comment", "Comment"]
+					]
+				],
+				[
+					"Terminal",
+					[
+						["ide", "ansiBlack", "ANSI black"],
+						["ide", "ansiMagenta", "ANSI magenta"],
+						["ide", "ansiCyan", "ANSI cyan"],
+						["ide", "ansiWhite", "ANSI white"],
+						["ide", "ansiBrightBlack", "ANSI bright black"],
+						["ide", "ansiBrightRed", "ANSI bright red"],
+						["ide", "ansiBrightGreen", "ANSI bright green"],
+						["ide", "ansiBrightYellow", "ANSI bright yellow"],
+						["ide", "ansiBrightBlue", "ANSI bright blue"],
+						["ide", "ansiBrightMagenta", "ANSI bright magenta"],
+						["ide", "ansiBrightCyan", "ANSI bright cyan"],
+						["ide", "ansiBrightWhite", "ANSI bright white"]
+					]
+				],
+				[
+					"Charts",
+					[
+						["web", "chart1", "Chart 1"],
+						["web", "chart2", "Chart 2"],
+						["web", "chart3", "Chart 3"],
+						["web", "chart4", "Chart 4"],
+						["web", "chart5", "Chart 5"]
+					]
+				]
+			];
+
+			function lucide(name) {
+				const svg = document.createElementNS(
+					"http://www.w3.org/2000/svg",
+					"svg"
+				);
+				svg.classList.add("icon");
+				svg.setAttribute("aria-hidden", "true");
+				const use = document.createElementNS(
+					"http://www.w3.org/2000/svg",
+					"use"
+				);
+				use.setAttribute("href", `/lucide.svg#${name}`);
+				svg.append(use);
+				return svg;
+			}
+
+			function setIcon(button, name, count) {
+				button.replaceChildren(lucide(name));
+				if (!count) return;
+				const badge = document.createElement("span");
+				badge.className = "link-count";
+				badge.textContent = count;
+				button.append(badge);
+			}
+
+			function setPressed(container, selected) {
+				for (const button of container.querySelectorAll("button"))
+					button.setAttribute(
+						"aria-pressed",
+						String(button.dataset.value === selected)
+					);
+			}
+
+			// Pasted colours arrive with quotes, semicolons, 0x, or no hash at all.
+			function normalize(value) {
+				const digits = value
+					.trim()
+					.toLowerCase()
+					.replace(/[\s"'`;,]/g, "")
+					.replace(/^(?:#|0x)+/, "");
+				if (!/^[0-9a-f]+$/.test(digits)) return null;
+				if (digits.length === 3 || digits.length === 4)
+					return `#${[...digits].map((character) => character + character).join("")}`;
+				return digits.length === 6 || digits.length === 8 ? `#${digits}` : null;
+			}
+
+			function toHsv(hex) {
+				const [red, green, blue] = [1, 3, 5].map(
+					(index) => parseInt(hex.slice(index, index + 2), 16) / 255
+				);
+				const value = Math.max(red, green, blue);
+				const span = value - Math.min(red, green, blue);
+				const hue =
+					span === 0
+						? 0
+						: value === red
+							? (green - blue) / span + (green < blue ? 6 : 0)
+							: value === green
+								? (blue - red) / span + 2
+								: (red - green) / span + 4;
+				return [hue * 60, value === 0 ? 0 : span / value, value];
+			}
+
+			function toHex([hue, saturation, value]) {
+				const channel = (offset) => {
+					const k = (offset + hue / 60) % 6;
+					const c =
+						value * (1 - saturation * Math.max(0, Math.min(k, 4 - k, 1)));
+					return Math.round(c * 255)
+						.toString(16)
+						.padStart(2, "0");
+				};
+				return `#${channel(5)}${channel(3)}${channel(1)}`;
+			}
+
+			const picker = document.querySelector("#picker");
+			const sv = picker.querySelector(".sv");
+			const knob = picker.querySelector(".sv i");
+			const hue = picker.querySelector(".hue");
+			const alpha = picker.querySelector(".alpha");
+			const hexField = picker.querySelector(".hex");
+			let hsv = [0, 0, 0];
+			let emit = () => {};
+
+			// The hue rail comes from the same conversion the picker writes with.
+			hue.style.background = `linear-gradient(to right, ${[
+				0, 60, 120, 180, 240, 300, 360
+			]
+				.map((degrees) => toHex([degrees, 1, 1]))
+				.join(", ")})`;
+
+			function refreshPicker() {
+				const base = toHex([hsv[0], 1, 1]);
+				const hex = toHex(hsv);
+				sv.style.background = `linear-gradient(to top, #000, #0000), linear-gradient(to right, #fff, #fff0), ${base}`;
+				knob.style.left = `${hsv[1] * 100}%`;
+				knob.style.top = `${(1 - hsv[2]) * 100}%`;
+				knob.style.background = hex;
+				alpha.style.background = `linear-gradient(to right, ${hex}00, ${hex}), repeating-conic-gradient(#737373 0 25%, #262626 0 50%) 0 0/12px 12px`;
+			}
+
+			function emitPicker() {
+				const suffix =
+					Number(alpha.value) === 255
+						? ""
+						: Number(alpha.value).toString(16).padStart(2, "0");
+				const next = toHex(hsv) + suffix;
+				hexField.value = next;
+				refreshPicker();
+				emit(next);
+			}
+
+			function openPicker(anchor, current, onChange) {
+				hsv = toHsv(current);
+				hue.value = String(Math.round(hsv[0]));
+				alpha.value = String(
+					current.length === 9 ? parseInt(current.slice(7), 16) : 255
+				);
+				hexField.value = current;
+				emit = onChange;
+				refreshPicker();
+				picker.showPopover();
+				const box = anchor.getBoundingClientRect();
+				picker.style.left = `${Math.min(box.left, innerWidth - 280)}px`;
+				picker.style.top = `${Math.min(box.bottom + 6, innerHeight - 300)}px`;
+			}
+
+			sv.onpointerdown = (event) => {
+				sv.setPointerCapture(event.pointerId);
+				const track = ({ clientX, clientY }) => {
+					const box = sv.getBoundingClientRect();
+					const clamp = (value) => Math.min(1, Math.max(0, value));
+					hsv = [
+						hsv[0],
+						clamp((clientX - box.left) / box.width),
+						1 - clamp((clientY - box.top) / box.height)
+					];
+					emitPicker();
+				};
+				sv.onpointermove = track;
+				track(event);
+			};
+			sv.onpointerup = () => (sv.onpointermove = null);
+			// The picker is anchored on open, so scrolling it out from under is a dismissal.
+			roles.parentElement.onscroll = () => picker.hidePopover();
+			picker.addEventListener("toggle", (event) => {
+				if (event.newState === "closed") settle();
+			});
+			hue.oninput = () => {
+				hsv = [Number(hue.value), hsv[1], hsv[2]];
+				emitPicker();
+			};
+			alpha.oninput = emitPicker;
+			hexField.oninput = () => {
+				const next = normalize(hexField.value);
+				hexField.classList.toggle("invalid", !next);
+				if (!next) return;
+				hsv = toHsv(next);
+				hue.value = String(Math.round(hsv[0]));
+				alpha.value = String(
+					next.length === 9 ? parseInt(next.slice(7), 16) : 255
+				);
+				refreshPicker();
+				emit(next);
+			};
+
+			// Roles holding the same value in this scheme move together, unless the
+			// user has detached one to give it a life of its own.
+			function linkedRoles(source, key) {
+				if (detached.has(`${source}.${key}`)) return [[source, key]];
+				const value = theme[source][scheme][key];
+				const found = [];
+				for (const area of ["web", "ide"])
+					for (const [name, current] of Object.entries(theme[area][scheme]))
+						if (current === value && !detached.has(`${area}.${name}`))
+							found.push([area, name]);
+				return found;
+			}
+
+			// Painted on the root, so the editor wears the scheme it is editing.
+			function paint() {
+				const root = document.documentElement;
+				root.style.colorScheme = scheme;
+				painted = {};
+				for (const [prefix, values] of [
+					["-", theme.web[scheme]],
+					["-ide-", theme.ide[scheme]]
+				])
+					for (const [key, value] of Object.entries(values))
+						painted[
+							`-${prefix}${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`
+						] = value;
+				for (const [name, value] of Object.entries(painted))
+					root.style.setProperty(name, value);
+				const idePreview = stage.querySelector(".ide-product");
+				if (idePreview)
+					for (const [key, enabled] of Object.entries(theme.ide.features))
+						idePreview.classList.toggle(
+							`feature-${key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}`,
+							enabled
+						);
+				seen.clear();
+				for (const section of sections) section.visible = 0;
+
+				for (const refresh of rows) refresh();
+				for (const section of sections)
+					section.group.hidden = section.visible === 0;
+				remember();
+				undoButton.disabled = history.length === 0;
+				redoButton.disabled = future.length === 0;
+				undoButton.title = history.length
+					? `Undo ${history.at(-1).label} (Ctrl+Z)`
+					: "Nothing to undo";
+				redoButton.title = future.length
+					? `Redo ${future.at(-1).label} (Ctrl+Y)`
+					: "Nothing to redo";
+				resetAllButton.disabled =
+					JSON.stringify(theme) === JSON.stringify(saved);
+			}
+
+			function renderControls() {
+				roles.replaceChildren();
+				rows.length = 0;
+				sections.length = 0;
+				const featureGroup = document.createElement("section");
+				featureGroup.className = "group";
+				const featureHeading = document.createElement("h2");
+				featureHeading.textContent = "VS Code theme options";
+				featureGroup.append(featureHeading);
+				const featureTally = { group: featureGroup, visible: 0 };
+				sections.push(featureTally);
+				for (const [key, label, description] of FEATURES) {
+					const row = document.createElement("label");
+					row.className = "feature-row";
+					row.dataset.feature = key;
+					const copy = document.createElement("span");
+					copy.className = "feature-copy";
+					const name = document.createElement("b");
+					name.textContent = label;
+					const detail = document.createElement("small");
+					detail.textContent = description;
+					copy.append(name, detail);
+					const toggle = document.createElement("input");
+					toggle.type = "checkbox";
+					toggle.className = "feature-switch";
+					toggle.setAttribute("aria-label", label);
+					toggle.onchange = () => {
+						if (theme.ide.features[key] === toggle.checked) return;
+						settle();
+						startEdit(label);
+						commitOnce();
+						theme.ide.features[key] = toggle.checked;
+						paint();
+					};
+					rows.push(() => {
+						toggle.checked = theme.ide.features[key];
+						row.hidden = area !== "ide";
+						if (!row.hidden) featureTally.visible += 1;
+					});
+					row.append(copy, toggle);
+					featureGroup.append(row);
+				}
+				roles.append(featureGroup);
+				for (const [title, entries] of GROUPS) {
+					const group = document.createElement("section");
+					group.className = "group";
+					const heading = document.createElement("h2");
+					heading.textContent = title;
+					group.append(heading);
+					const tally = { group, visible: 0 };
+					sections.push(tally);
+					for (const [source, key, label] of entries) {
+						labels.set(`${source}.${key}`, label);
+						const row = document.createElement("div");
+						row.className = "role";
+						const name = document.createElement("button");
+						name.type = "button";
+						name.className = "role-name";
+						name.title = label;
+						name.textContent = label;
+						const tag = document.createElement("b");
+						tag.className = "area";
+						tag.textContent = source;
+						const swatch = document.createElement("button");
+						swatch.type = "button";
+						swatch.className = "swatch";
+						swatch.setAttribute("aria-label", `${label} color picker`);
+						const text = document.createElement("input");
+						text.type = "text";
+						text.spellcheck = false;
+						text.setAttribute("aria-label", `${label} hex color`);
+						const link = document.createElement("button");
+						link.type = "button";
+						link.className = "link icon-only";
+						const reset = document.createElement("button");
+						reset.type = "button";
+						reset.className = "reset icon-only";
+						setIcon(reset, "rotate-ccw");
+						reset.title = "Reset this colour and everything linked to it";
+						const id = `${source}.${key}`;
+						row.dataset.role = id;
+						const current = () => theme[source][scheme][key];
+						const refresh = () => {
+							const value = current();
+							swatch.style.background = `linear-gradient(${value}, ${value}), repeating-conic-gradient(#737373 0 25%, #262626 0 50%) 0 0/8px 8px`;
+							if (document.activeElement !== text) {
+								text.value = value;
+								text.classList.remove("invalid");
+							}
+							const loose = detached.has(id);
+							const shared = linkedRoles(source, key);
+							setIcon(
+								link,
+								loose ? "unlink-2" : "link-2",
+								shared.length > 1 ? String(shared.length) : ""
+							);
+							link.classList.toggle("loose", loose);
+							link.title = loose
+								? "Detached - edits here move nothing else. Click to link it back up."
+								: shared.length > 1
+									? `Linked with ${shared
+											.filter((role) => `${role[0]}.${role[1]}` !== id)
+											.map((role) => labels.get(role.join(".")))
+											.join(", ")}. Click to detach this one.`
+									: "Nothing else holds this value. Click to keep it that way.";
+							reset.disabled = shared.every(
+								([peerSource, peerKey]) =>
+									theme[peerSource][scheme][peerKey] ===
+									saved[peerSource][scheme][peerKey]
+							);
+							// "Hide linked" keeps the first row of each group of equal values,
+							// counted over the rows the surface filter is letting through.
+							const elsewhere = onlyArea && !surfaceTokens.get(area).has(id);
+							let first = false;
+							if (!elsewhere) {
+								first = loose || !seen.has(value);
+								if (!loose) seen.add(value);
+							}
+							row.hidden = elsewhere || (hideLinked && !first);
+							if (!row.hidden) tally.visible += 1;
+						};
+						rows.push(refresh);
+						name.onclick = () => revealToken(id);
+						// An edit that changes nothing must not land in the history.
+						const update = (next) => {
+							if (
+								editing.every(
+									([peerSource, peerKey]) =>
+										theme[peerSource][scheme][peerKey] === next
+								)
+							)
+								return;
+							commitOnce();
+							for (const [peerSource, peerKey] of editing)
+								theme[peerSource][scheme][peerKey] = next;
+							paint();
+						};
+						const startOn = (peers) => {
+							settle();
+							editing = peers;
+							startEdit(
+								peers.length > 1
+									? `${label} and ${peers.length - 1} linked`
+									: label
+							);
+						};
+						swatch.onclick = () => {
+							revealToken(id);
+							startOn(linkedRoles(source, key));
+							openPicker(swatch, current(), update);
+						};
+						text.onfocus = () => {
+							revealToken(id);
+							startOn(linkedRoles(source, key));
+						};
+						text.onblur = settle;
+						link.onclick = () => {
+							if (detached.has(id)) detached.delete(id);
+							else detached.add(id);
+							remember();
+							paint();
+						};
+						reset.onclick = () => {
+							const peers = linkedRoles(source, key);
+							if (
+								peers.every(
+									([peerSource, peerKey]) =>
+										theme[peerSource][scheme][peerKey] ===
+										saved[peerSource][scheme][peerKey]
+								)
+							)
+								return;
+							settle();
+							startEdit(`reset ${label}`);
+							commitOnce();
+							for (const [peerSource, peerKey] of peers)
+								theme[peerSource][scheme][peerKey] =
+									saved[peerSource][scheme][peerKey];
+							paint();
+						};
+						text.oninput = () => {
+							const next = normalize(text.value);
+							text.classList.toggle("invalid", !next);
+							if (next) update(next);
+						};
+						text.onchange = () => {
+							const next = normalize(text.value);
+							text.value = next ?? current();
+							text.classList.remove("invalid");
+						};
+						row.append(name, tag, swatch, text, link, reset);
+						group.append(row);
+					}
+					roles.append(group);
+				}
+			}
+
+			const statesFor = (surface) =>
+				previewStates
+					.filter((template) => template.dataset.surface === surface)
+					.toSorted(
+						(first, second) =>
+							Number(first.dataset.order ?? 0) -
+							Number(second.dataset.order ?? 0)
+					);
+			const containsToken = (template, token) =>
+				tokenSet(template.content).has(token);
+
+			function stateForToken(surface, token) {
+				const shell = previewShells.get(surface);
+				if (shell && containsToken(shell, token)) return views[surface];
+				return statesFor(surface).find((template) =>
+					containsToken(template, token)
+				)?.dataset.view;
+			}
+
+			function highlightToken() {
+				for (const row of roles.querySelectorAll(".role"))
+					row.classList.toggle("active", row.dataset.role === activeToken);
+				for (const element of stage.querySelectorAll("[data-token]"))
+					element.classList.toggle(
+						"token-hit",
+						activeToken !== null &&
+							element.dataset.token.split(/\s+/).includes(activeToken)
+					);
+			}
+
+			function revealToken(token) {
+				activeToken = token;
+				let nextView = stateForToken(area, token);
+				if (!nextView) {
+					const source = token.split(".")[0];
+					const preferred = source === "ide" ? ["ide"] : ["web", "ide"];
+					area =
+						preferred.find((surface) => stateForToken(surface, token)) ?? area;
+					nextView = stateForToken(area, token);
+				}
+				if (nextView) views[area] = nextView;
+				render();
+			}
+
+			function previewSummary() {
+				const tokens = surfaceTokens.get(area);
+				const web = [...tokens].filter((token) => token.startsWith("web."));
+				const ide = [...tokens].filter((token) => token.startsWith("ide."));
+				if (area === "ide")
+					return `${ide.length} IDE roles Â· ${FEATURES.length} theme options Â· ${web.length} shared status roles`;
+				return `${web.length} web roles Â· every role has a reference state`;
+			}
+
+			function render() {
+				picker.hidePopover();
+				const states = statesFor(area);
+				if (!states.some((template) => template.dataset.view === views[area]))
+					views[area] = states[0].dataset.view;
+
+				const bar = document.createElement("div");
+				bar.className = "preview-bar";
+				const tabs = document.createElement("div");
+				tabs.className = "preview-tabs";
+				tabs.setAttribute("aria-label", `${area} reference state`);
+				for (const template of states) {
+					const button = document.createElement("button");
+					button.type = "button";
+					button.dataset.goView = template.dataset.view;
+					button.textContent = template.dataset.label;
+					button.setAttribute(
+						"aria-pressed",
+						String(template.dataset.view === views[area])
+					);
+					tabs.append(button);
+				}
+				const summary = document.createElement("div");
+				summary.className = "preview-summary";
+				summary.textContent = previewSummary();
+				bar.append(tabs, summary);
+
+				const frame = document.createElement("div");
+				frame.className = "preview-frame";
+				const shell = previewShells
+					.get(area)
+					.content.firstElementChild.cloneNode(true);
+				const state = states.find(
+					(template) => template.dataset.view === views[area]
+				);
+				shell
+					.querySelector("[data-preview-slot]")
+					.replaceChildren(state.content.cloneNode(true));
+				for (const button of shell.querySelectorAll("[data-go-view]"))
+					button.classList.toggle(
+						"current",
+						button.dataset.goView === views[area]
+					);
+				frame.append(shell);
+				stage.replaceChildren(bar, frame);
+				paint();
+				highlightToken();
+				setPressed(document.querySelector("#area"), area);
+				setPressed(document.querySelector("#scheme"), scheme);
+			}
+
+			stage.onclick = (event) => {
+				const button = event.target.closest("[data-go-view]");
+				if (!button) return;
+				const next = button.dataset.goView;
+				if (!statesFor(area).some((template) => template.dataset.view === next))
+					return;
+				views[area] = next;
+				activeToken = null;
+				render();
+			};
+
+			document.querySelector("#area").onclick = (event) => {
+				const button = event.target.closest("button[data-value]");
+				if (!button) return;
+				area = button.dataset.value;
+				remember();
+				render();
+			};
+			document.querySelector("#scheme").onclick = (event) => {
+				const button = event.target.closest("button[data-value]");
+				if (!button) return;
+				scheme = button.dataset.value;
+				remember();
+				render();
+			};
+			document.querySelector("#save").onclick = async () => {
+				const save = document.querySelector("#save");
+				save.disabled = true;
+				status.className = "";
+				status.textContent = "Savingâ€¦";
+				const response = await fetch("/theme", {
+					method: "PUT",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify(theme)
+				});
+				if (response.ok) saved = structuredClone(theme);
+				status.textContent = response.ok
+					? "Saved and regenerated."
+					: await response.text();
+				status.className = response.ok ? "" : "error";
+				save.disabled = false;
+				paint();
+			};
+			const hideLinkedBox = document.querySelector("#hide-linked");
+			const onlyAreaBox = document.querySelector("#only-area");
+			hideLinkedBox.checked = hideLinked;
+			onlyAreaBox.checked = onlyArea;
+			hideLinkedBox.onchange = (event) => {
+				hideLinked = event.target.checked;
+				remember();
+				paint();
+			};
+			onlyAreaBox.onchange = (event) => {
+				onlyArea = event.target.checked;
+				remember();
+				paint();
+			};
+
+			resetAllButton.onclick = () => {
+				if (JSON.stringify(theme) === JSON.stringify(saved)) return;
+				settle();
+				startEdit("reset all");
+				commitOnce();
+				apply(saved);
+				paint();
+			};
+
+			// The transfer text is exactly what a save writes to theme.json.
+			const transfer = document.querySelector("#transfer");
+			const transferText = document.querySelector("#transfer-text");
+			const transferStatus = document.querySelector("#transfer-status");
+			const say = (message, bad) => {
+				transferStatus.textContent = message;
+				transferStatus.className = bad ? "error" : "";
+			};
+
+			function readTransfer(text) {
+				const next = JSON.parse(text);
+				const clean = { web: {}, ide: { features: {} } };
+				const featureKeys = Object.keys(theme.ide.features);
+				if (
+					!next?.ide?.features ||
+					Object.keys(next.ide.features).length !== featureKeys.length
+				)
+					throw new Error("ide.features does not list every theme option");
+				for (const key of featureKeys) {
+					if (typeof next.ide.features[key] !== "boolean")
+						throw new Error(`ide.features.${key} is not a boolean`);
+					clean.ide.features[key] = next.ide.features[key];
+				}
+				for (const source of ["web", "ide"])
+					for (const values of ["light", "dark"]) {
+						const from = next?.[source]?.[values];
+						const keys = Object.keys(theme[source][values]);
+						if (!from || Object.keys(from).length !== keys.length)
+							throw new Error(`${source}.${values} does not list every role`);
+						clean[source][values] = {};
+						for (const key of keys) {
+							const value = normalize(String(from[key] ?? ""));
+							if (!value)
+								throw new Error(`${source}.${values}.${key} is not a colour`);
+							clean[source][values][key] = value;
+						}
+					}
+				return clean;
+			}
+
+			const applyButton = document.querySelector("#transfer-apply");
+
+			// Apply stays off until the text is both readable and different.
+			function reviewTransfer() {
+				let next;
+				try {
+					next = readTransfer(transferText.value);
+				} catch (error) {
+					applyButton.disabled = true;
+					say(String(error?.message ?? error), true);
+					return null;
+				}
+				const same = JSON.stringify(next) === JSON.stringify(theme);
+				applyButton.disabled = same;
+				say(
+					same
+						? "Unchanged - select all to copy it out, or paste a set over it."
+						: "Ready to apply."
+				);
+				return same ? null : next;
+			}
+
+			document.querySelector("#transfer-open").onclick = () => {
+				transferText.value = `${JSON.stringify(theme, null, "\t")}\n`;
+				reviewTransfer();
+				transfer.showModal();
+				transferText.select();
+			};
+			document.querySelector("#transfer-close").onclick = () =>
+				transfer.close();
+			transferText.oninput = reviewTransfer;
+			applyButton.onclick = () => {
+				const next = reviewTransfer();
+				if (!next) return;
+				settle();
+				startEdit("import");
+				commitOnce();
+				apply(next);
+				paint();
+				transfer.close();
+			};
+			renderControls();
+			render();
+		</script>
+	</body>
+</html>
