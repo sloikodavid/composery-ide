@@ -1,0 +1,36 @@
+[workspace]
+members = ["crates/*"]
+resolver = "3"
+
+[workspace.package]
+# Deliberately inert, like every other private workspace package here. These
+# crates are never published, and the product version lives in exactly one place
+# - the repository's root package.json, which the release workflow reads. The
+# binary reports that version at runtime (see crates/composery/src/cli.rs), so
+# nothing needs this number to be accurate and nobody has to remember to bump it.
+# A test keeps it at 0.0.0 so a second real version cannot creep back in.
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.97"
+license = "Apache-2.0"
+
+[profile.release]
+lto = "thin"
+strip = "symbols"
+
+[workspace.dependencies]
+anyhow = "1.0.104"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt"] }
+clap = { version = "4.6.5", features = ["derive"] }
+tempfile = "3.27.0"
+sha2 = "0.11.0"
+base64 = "0.23.0"
+getrandom = "0.4.3"
+fs2 = "0.4.3"
+libc = "0.2.189"
+# The attribute cargo-mutants reads to skip a function or block that no test
+# can reach. Dev-only: the shipped binary never compiles it.
+mutants = "0.0.3"
