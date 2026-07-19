@@ -1,0 +1,36 @@
+/* This TypeScript project config describes the environment that
+ * Convex functions run in and is used to typecheck them.
+ * You can modify it, but some settings are required to use Convex.
+ *
+ * The Convex CLI reads this file to typecheck `convex/` on dev and deploy, and
+ * writes it only when creating a project - so unlike ../tsconfig.json, which
+ * Next.js rewrites, an option left out here stays out and TypeScript's own
+ * default applies. TypeScript 6 already gives us `strict`, `esModuleInterop`,
+ * `allowSyntheticDefaultImports`, and `bundler` resolution for an `esnext`
+ * module, so none of those are spelled out.
+ *
+ * This is the second reading of `convex/`: ../tsconfig.json checks the same
+ * directory as part of the Next.js program. Convex will not read that file and
+ * Next will not read this one, so the duplication cannot be removed - only kept
+ * honest. Where the two disagree, `convex deploy` and `pnpm check:types` can
+ * disagree too.
+ */
+{
+	"compilerOptions": {
+		/* These settings are not required by Convex and can be modified. */
+		"skipLibCheck": true,
+		/* ../shared/index.ts is imported directly as TS by Node type-stripping,
+		 * which requires the explicit .ts extension on its own imports. */
+		"allowImportingTsExtensions": true,
+
+		/* These compiler options are required by Convex */
+		"target": "ESNext",
+		"lib": ["ES2023", "dom"],
+		"forceConsistentCasingInFileNames": true,
+		"module": "ESNext",
+		"isolatedModules": true,
+		"noEmit": true
+	},
+	"include": ["./**/*"],
+	"exclude": ["./_generated"]
+}
