@@ -1,0 +1,317 @@
+@import "fumadocs-ui/css/neutral.css";
+@import "fumadocs-ui/css/preset.css";
+@import "fumadocs-openapi/css/preset.css";
+
+/* Remap fumadocs' fd-* tokens onto our palette. Must be plain (unlayered) rules,
+   not `@theme inline` - inline never emits the variables, so neutral.css's gray
+   defaults would win the cascade. */
+:root,
+.dark {
+	--color-fd-background: var(--background);
+	--color-fd-foreground: var(--foreground);
+	--color-fd-muted: var(--muted);
+	--color-fd-muted-foreground: var(--muted-foreground);
+	--color-fd-popover: var(--popover);
+	--color-fd-popover-foreground: var(--popover-foreground);
+	--color-fd-card: var(--card);
+	--color-fd-card-foreground: var(--card-foreground);
+	--color-fd-border: var(--border);
+	--color-fd-primary: var(--link);
+	--color-fd-primary-foreground: var(--background);
+	--color-fd-secondary: var(--muted);
+	--color-fd-secondary-foreground: var(--foreground);
+	--color-fd-accent: var(--selected);
+	--color-fd-accent-foreground: var(--selected-foreground);
+	--color-fd-ring: var(--ring);
+	--color-fd-overlay: var(--overlay);
+	--color-fd-error: var(--destructive);
+	--color-fd-success: var(--success);
+	--color-fd-warning: var(--warning);
+}
+
+/* fumadocs' Button classes live in node_modules (unscanned); `invisible` must be
+   safelisted or the closed mobile drawer stays on screen. */
+@source "../node_modules/fumadocs-ui/dist/components/ui/button.js";
+@source inline("invisible");
+
+/* Vendored fumadocs sidebar-drawer keyframes. */
+@theme {
+	--animate-fd-fade-in: fd-fade-in 300ms ease;
+	--animate-fd-fade-out: fd-fade-out 300ms ease;
+	--animate-fd-sidebar-in: fd-sidebar-in 250ms ease;
+	--animate-fd-sidebar-out: fd-sidebar-out 250ms ease;
+
+	@keyframes fd-sidebar-in {
+		from {
+			transform: translateX(var(--fd-sidebar-drawer-offset));
+		}
+	}
+	@keyframes fd-sidebar-out {
+		to {
+			transform: translateX(var(--fd-sidebar-drawer-offset));
+		}
+	}
+	@keyframes fd-fade-in {
+		from {
+			opacity: 0;
+		}
+		to {
+			opacity: 1;
+		}
+	}
+	@keyframes fd-fade-out {
+		from {
+			opacity: 1;
+		}
+		to {
+			opacity: 0;
+		}
+	}
+}
+
+:root {
+	--fd-sidebar-drawer-offset: 100%;
+}
+
+#nd-subnav {
+	/* Solid, not the translucent 80% mix: a header bar is a solid surface, and
+	   no border draws the edge - the bar ends where its content does, exactly
+	   like the marketing header. */
+	background-color: var(--header);
+	border-bottom: none;
+	-webkit-backdrop-filter: none;
+	backdrop-filter: none;
+	color: var(--header-foreground);
+}
+
+#nd-sidebar,
+#nd-sidebar-mobile {
+	background-color: var(--sidebar);
+	color: var(--sidebar-foreground);
+}
+
+/* Hover is the translucent overlay, active is the solid selected fill - one
+   state system, the same rule the rest of the app follows (the transient
+   interaction is an overlay, the persistent current thing is a solid). The
+   mobile drawer builds the same tree, so it gets the same treatment. */
+#nd-sidebar
+	[data-radix-scroll-area-viewport]
+	:is(a, button):not([data-active="true"]):hover {
+	background-color: var(--hover);
+}
+
+#nd-sidebar [data-active="true"],
+#nd-sidebar-mobile [data-active="true"] {
+	background-color: var(--selected);
+	color: var(--selected-foreground);
+}
+
+/* Fumadocs' own transient hovers use the accent (a solid selected fill) - the
+   same two-system split the rest of this file removes. The one state system
+   is overlay for transient, solid for the persistent current thing, so its
+   hover utilities are pointed at the overlay instead. The sidebar and pager
+   have their own explicit rules above, and those beat this catch-all. */
+[class~="hover:bg-fd-accent"]:hover,
+[class~="hover:bg-fd-accent/50"]:hover,
+[class~="hover:bg-fd-accent/80"]:hover {
+	background-color: var(--hover);
+}
+
+/* Search trigger + sidebar islands: drop fumadocs' fd-secondary fill so they read
+   as our border-defined outline inputs. kbd badges use solid fd-secondary, not /50. */
+#nd-sidebar [class~="bg-fd-secondary/50"] {
+	background-color: transparent;
+}
+
+/* Fumadocs' shared popover defaults to bg-fd-popover/60 + backdrop-blur-lg,
+   which makes the page-actions "Open" menu hard to read over document text. */
+.bg-fd-popover\/60.backdrop-blur-lg {
+	background-color: var(--color-fd-popover);
+	-webkit-backdrop-filter: none;
+	backdrop-filter: none;
+}
+
+/* --- Line removal. The site's rule: big surfaces and separators carry no
+   lines; the only lines kept are the one under a table's header row and the
+   one on an outline button. Everything below strips the lines fumadocs and
+   the openapi renderer draw, and maps their button fills onto our palette
+   tokens. Plain unlayered rules, as above: they must beat the dist classes by
+   coming later in this file. */
+
+/* Card-like surfaces (code blocks and the operation panels) keep their card
+   fill and lose the outline. */
+[class~="bg-fd-card"][class~="border"] {
+	border: none;
+}
+
+/* The rows of a group (parameters, responses) lose their separator lines; the
+   group stays one card surface. */
+:where([class~="divide-fd-border"] > :not(:last-child)) {
+	border-color: transparent;
+}
+
+/* The response panel's inner content box. */
+[class~="ps-4.5"][class~="border"] {
+	border: none;
+}
+
+/* Prose tables match the app tables: no outer border, no column or row lines,
+   only the line under the header row. No card fill either - the app's tables
+   sit transparent on their card, and so do these. */
+.prose table {
+	background: transparent;
+	border: none;
+	border-radius: 0;
+}
+
+.prose :where(th, td) {
+	border-inline-start: none;
+}
+
+.prose td {
+	border-bottom: none;
+}
+
+/* Inline code: a muted fill, no box around it. */
+.prose :where(code) {
+	border: none;
+}
+
+/* The code block's own chrome: the copy button sits on a solid chip, never on
+   a blur. The title bar's underline goes with it. */
+figure.shiki div[class~="backdrop-blur-lg"] {
+	-webkit-backdrop-filter: none;
+	backdrop-filter: none;
+	background-color: var(--color-fd-card);
+}
+
+figure.shiki > div[class~="border-b"] {
+	border-bottom: none;
+}
+
+/* The docs' previous/next pager cards: the same secondary-button pair as every
+   other button here - a fill to rest on, the designed hover, and no outline.
+   The hover is written out because this rule's id selector beats fumadocs' own
+   `hover:bg-fd-accent/80` class, which would otherwise never paint. */
+#nd-page a[class~="rounded-lg"][class~="border"] {
+	border: none;
+	background-color: var(--secondary-button);
+	color: var(--secondary-button-foreground);
+}
+
+#nd-page a[class~="rounded-lg"][class~="border"]:hover {
+	background-color: var(--secondary-button-hover);
+	color: var(--secondary-button-foreground);
+}
+
+/* fumadocs' secondary buttons (Copy Markdown, Open, the TS definitions Copy)
+   become our secondary buttons: same fill tokens, no border. */
+button[class~="bg-fd-secondary"][class~="border"] {
+	border: none;
+	background-color: var(--secondary-button);
+	color: var(--secondary-button-foreground);
+}
+
+button[class~="bg-fd-secondary"][class~="border"]:hover {
+	background-color: var(--secondary-button-hover);
+	color: var(--secondary-button-foreground);
+}
+
+/* The mobile TOC popover header: same treatment as the narrow header - no
+   line, no blur, solid page background. */
+[data-toc-popover] header {
+	border-bottom: none;
+	-webkit-backdrop-filter: none;
+	backdrop-filter: none;
+	background-color: var(--background);
+}
+
+/* The docs' own mobile drawer loses its edge line (its shadow already lifts
+   it off the page), as does the drawer's footer separator. */
+#nd-sidebar-mobile {
+	border-inline-start: none;
+}
+
+#nd-sidebar-mobile [class~="border-t"] {
+	border-top: none;
+}
+
+/* The search dialog: a plain popover surface with no border and no internal
+   section lines; its ESC button becomes a secondary button. The overlay keeps
+   the dark fill but drops the blur, matching the app's own dialogs. */
+[role="dialog"][class~="bg-fd-popover"] {
+	border: none;
+}
+
+[role="dialog"][class~="bg-fd-popover"] > *:not(:last-child) {
+	border-bottom: none;
+}
+
+[role="dialog"][class~="bg-fd-popover"] button[class~="border"] {
+	border: none;
+	background-color: var(--secondary-button);
+	color: var(--secondary-button-foreground);
+}
+
+[role="dialog"][class~="bg-fd-popover"] button[class~="border"]:hover {
+	background-color: var(--secondary-button-hover);
+	color: var(--secondary-button-foreground);
+}
+
+.bg-fd-overlay {
+	-webkit-backdrop-filter: none;
+	backdrop-filter: none;
+}
+
+/* Search results: preview cards and the guide line between a result and its
+   children have no borders. */
+[class~="bg-fd-secondary"][class~="rounded-md"][class~="p-2"] {
+	border: none;
+}
+
+[class~="w-px"][class~="bg-fd-border"] {
+	display: none;
+}
+
+/* The search field's shortcut badges have a fill and no box around them. The
+   field itself keeps its border - it is an input, and inputs keep their
+   border like the outline buttons they match. */
+/* The search field's shortcut chips ("Ctrl K"): a keycap raised toward the
+   foreground by a fixed share, written as a relationship rather than a theme
+   token so it cannot half-drift - the same mix in both modes makes the chip
+   visibly darker than its field in light and visibly lighter in dark, instead
+   of a black hole on black. */
+#nd-sidebar [data-search-full] kbd {
+	border: none;
+	background-color: color-mix(in oklab, var(--sidebar) 90%, var(--foreground));
+}
+
+/* The sidebar's icon island (GitHub link + theme switch): no outline around
+   the island, and no line between its two buttons. The theme switch there is
+   given border-y-0 border-e-0 by fumadocs, which leaves its left edge as a
+   separator - that edge goes too. */
+#nd-sidebar div:has(> [data-theme-toggle]) {
+	border: none;
+}
+
+#nd-sidebar [data-theme-toggle] {
+	border: none;
+}
+
+/* The page-actions popover is a plain surface. */
+[class~="bg-fd-popover"][class~="border"] {
+	border: none;
+}
+
+/* The docs drawer's overlay is a plain dim like the app's dialogs - the blur
+   fumadocs puts on it goes, and it gains the overlay fill it lacked. The
+   overlay is the element whose next sibling is the drawer. */
+div[data-state]:has(+ #nd-sidebar-mobile) {
+	-webkit-backdrop-filter: none;
+	backdrop-filter: none;
+	background-color: var(--overlay);
+}
+
+.prose :is(h1, h2, h3, h4, h5, h6) {
+	font-family: var(--font-heading);
+}

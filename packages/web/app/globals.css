@@ -1,0 +1,365 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "../node_modules/shadcn/dist/tailwind.css";
+/* Base theme for Clerk's @clerk/ui components (lib/clerk-appearance.ts starts
+   from the `shadcn` theme); ships its compiled classes since they live in
+   node_modules and Tailwind won't scan them. */
+@import "@clerk/ui/themes/shadcn.css";
+/* All fumadocs-ui integration glue (token mapping, class scanning, animations)
+   is isolated in its own file so the rest of the app's styles stay free of it. */
+@import "./fumadocs.css";
+@import "./brand.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+	--font-sans: var(--font-sf-like);
+	--font-heading: var(--font-sf-like);
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-header: var(--header);
+	--color-header-foreground: var(--header-foreground);
+	--color-footer: var(--footer);
+	--color-footer-foreground: var(--footer-foreground);
+	--color-sidebar: var(--sidebar);
+	--color-sidebar-foreground: var(--sidebar-foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-dialog: var(--dialog);
+	--color-dialog-foreground: var(--dialog-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-button: var(--button);
+	--color-button-foreground: var(--button-foreground);
+	--color-button-hover: var(--button-hover);
+	--color-button-active: var(--button-active);
+	--color-outline-button: var(--outline-button);
+	--color-outline-button-hover: var(--outline-button-hover);
+	--color-outline-button-active: var(--outline-button-active);
+	--color-primary-button: var(--primary-button);
+	--color-primary-button-foreground: var(--primary-button-foreground);
+	--color-primary-button-hover: var(--primary-button-hover);
+	--color-primary-button-active: var(--primary-button-active);
+	--color-secondary-button: var(--secondary-button);
+	--color-secondary-button-foreground: var(--secondary-button-foreground);
+	--color-secondary-button-hover: var(--secondary-button-hover);
+	--color-secondary-button-active: var(--secondary-button-active);
+	--color-hover: var(--hover);
+	--color-focus: var(--focus);
+	--color-badge: var(--badge);
+	--color-badge-foreground: var(--badge-foreground);
+	--color-badge-hover: var(--badge-hover);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-field: var(--field);
+	--color-field-foreground: var(--field-foreground);
+	--color-field-placeholder: var(--field-placeholder);
+	--color-field-border: var(--field-border);
+	--color-selected: var(--selected);
+	--color-selected-foreground: var(--selected-foreground);
+	--color-link: var(--link);
+	--color-control: var(--control);
+	--color-destructive: var(--destructive);
+	--color-success: var(--success);
+	--color-warning: var(--warning);
+	--color-info: var(--info);
+	--color-border: var(--border);
+	--color-ring: var(--ring);
+	--color-overlay: var(--overlay);
+	--color-shadow: var(--shadow);
+	--color-selection: var(--selection);
+	--color-scrollbar-track: var(--scrollbar-track);
+	--color-scrollbar: var(--scrollbar);
+	--color-scrollbar-hover: var(--scrollbar-hover);
+	--color-scrollbar-active: var(--scrollbar-active);
+	--shadow-xs: 0 1px 2px 0 var(--shadow);
+	--shadow-sm: 0 1px 3px 0 var(--shadow), 0 1px 2px -1px var(--shadow);
+	--shadow-md: 0 4px 6px -1px var(--shadow), 0 2px 4px -2px var(--shadow);
+	--shadow-lg: 0 10px 15px -3px var(--shadow), 0 4px 6px -4px var(--shadow);
+	--color-chart-1: var(--chart-1);
+	--color-chart-2: var(--chart-2);
+	--color-chart-3: var(--chart-3);
+	--color-chart-4: var(--chart-4);
+	--color-chart-5: var(--chart-5);
+	--radius-sm: calc(var(--radius) * 0.6);
+	--radius-md: calc(var(--radius) * 0.8);
+	--radius-lg: var(--radius);
+	--radius-xl: calc(var(--radius) * 1.4);
+	--radius-2xl: calc(var(--radius) * 1.8);
+}
+
+:root {
+	--radius: 0.625rem;
+	--header-auth-animation: page-fade-in 180ms ease-out both;
+	--header-avatar-animation: header-avatar-in 180ms ease-out both;
+	--font-sf-like:
+		-apple-system, BlinkMacSystemFont, var(--font-inter), "InterVariable",
+		"Inter Variable", Inter, "Segoe UI", system-ui, sans-serif;
+	--inter-opsz-text: 17;
+	--inter-opsz-heading-sm: 24;
+	--inter-opsz-heading-md: 28;
+	--inter-opsz-heading-lg: 32;
+	--inter-tracking-text: -0.009em;
+	--inter-tracking-heading: -0.03em;
+}
+
+@supports (font-variation-settings: normal) {
+	:root {
+		--font-sf-like:
+			-apple-system, BlinkMacSystemFont, var(--font-inter), "InterVariable",
+			"Inter Variable", Inter, "Segoe UI", system-ui, sans-serif;
+	}
+}
+
+@layer base {
+	* {
+		@apply border-border outline-ring/50;
+	}
+
+	html {
+		@apply font-sans;
+		scrollbar-color: var(--scrollbar) var(--scrollbar-track);
+		font-feature-settings:
+			"liga" 1,
+			"calt" 1;
+		font-optical-sizing: auto;
+		font-variation-settings: "opsz" var(--inter-opsz-text);
+		text-rendering: optimizeLegibility;
+	}
+
+	body {
+		@apply bg-background text-foreground;
+		/* Always reserve the scrollbar so page width is consistent across routes.
+		   It lives on <body> (not <html>) so <html> stays overflow:visible and
+		   overflow propagation keeps working: when an overlay locks scroll via
+		   body{overflow:hidden} (Clerk/floating-ui), the root scrollbar is
+		   actually removed and its compensating padding refills the gap, so the
+		   page never shifts horizontally. */
+		overflow-y: scroll;
+		-webkit-font-smoothing: antialiased;
+		letter-spacing: var(--inter-tracking-text);
+		-moz-osx-font-smoothing: grayscale;
+	}
+
+	button:not(:disabled),
+	[role="button"]:not(:disabled) {
+		cursor: pointer;
+	}
+
+	::selection {
+		background: var(--selection);
+	}
+
+	input,
+	textarea,
+	select {
+		accent-color: var(--control);
+	}
+
+	*::-webkit-scrollbar {
+		width: 10px;
+		height: 10px;
+	}
+
+	*::-webkit-scrollbar-track {
+		background: var(--scrollbar-track);
+	}
+
+	*::-webkit-scrollbar-thumb {
+		border: 2px solid var(--scrollbar-track);
+		border-radius: 999px;
+		background: var(--scrollbar);
+	}
+
+	*::-webkit-scrollbar-thumb:hover {
+		background: var(--scrollbar-hover);
+	}
+
+	*::-webkit-scrollbar-thumb:active {
+		background: var(--scrollbar-active);
+	}
+
+	*::-webkit-scrollbar-corner,
+	*::-webkit-resizer {
+		background: var(--scrollbar-track);
+	}
+
+	h1,
+	h2,
+	h3 {
+		font-family: var(--font-heading);
+		font-optical-sizing: auto;
+		font-variation-settings: "opsz" var(--inter-opsz-heading-md);
+		font-weight: 500;
+		letter-spacing: var(--inter-tracking-heading);
+		line-height: 1.05;
+	}
+
+	h1 {
+		font-variation-settings: "opsz" var(--inter-opsz-heading-lg);
+	}
+
+	h3 {
+		font-variation-settings: "opsz" var(--inter-opsz-heading-sm);
+	}
+
+	/* Site-wide line wrapping: headings balance across lines, running text
+	   avoids orphans (a lone word on the last line). Covers every heading and
+	   paragraph, including docs prose and dialog descriptions. */
+	h1,
+	h2,
+	h3,
+	h4,
+	h5,
+	h6 {
+		text-wrap: balance;
+	}
+
+	p {
+		text-wrap: pretty;
+	}
+
+	/* Centered text is short by design and ragged on both ends, so equal
+	   lines read better than a full line plus a stub. Centering (own or
+	   inherited from a text-center container) opts a paragraph into balance. */
+	p.text-center,
+	.text-center p {
+		text-wrap: balance;
+	}
+}
+
+/* Inline content links: the same treatment fumadocs gives prose links in the
+   docs (foreground text, primary-coloured underline, fade on hover), so a link
+   in a page reads the same as a link in a doc. */
+.link {
+	color: var(--foreground);
+	font-weight: 500;
+	text-decoration: underline;
+	text-decoration-color: var(--link);
+	text-decoration-thickness: 1.5px;
+	text-underline-offset: 3.5px;
+	transition: opacity 200ms ease-out;
+}
+
+.link:hover {
+	opacity: 0.8;
+}
+
+/* Content settles in with a clean fade instead of a layout-shifting skeleton. */
+.page-fade-in {
+	animation: page-fade-in 220ms ease-out both;
+}
+
+.header-auth-fade-in {
+	animation: var(--header-auth-animation);
+}
+
+@keyframes page-fade-in {
+	from {
+		opacity: 0;
+	}
+
+	to {
+		opacity: 1;
+	}
+}
+
+/* The avatar is a circle arriving into reserved space, so it grows into it
+   rather than blinking on. Only the box scales - the trigger and image inside
+   it take the plain fade, or the scales would multiply. */
+@keyframes header-avatar-in {
+	from {
+		opacity: 0;
+		scale: 0.8;
+	}
+
+	to {
+		opacity: 1;
+		scale: 1;
+	}
+}
+
+/* Native <details> animation: `interpolate-size` makes the `auto` height
+   interpolable and `allow-discrete` holds `content-visibility` open for the
+   duration. A browser without `::details-content` just snaps open as before. */
+.disclosure {
+	interpolate-size: allow-keywords;
+}
+
+.disclosure::details-content {
+	block-size: 0;
+	opacity: 0;
+	overflow: hidden;
+	transition:
+		block-size 140ms ease-out,
+		opacity 110ms ease-out,
+		content-visibility 140ms allow-discrete;
+}
+
+.disclosure[open]::details-content {
+	block-size: auto;
+	opacity: 1;
+}
+
+/* Shiki renders the box logs with a One Light / One Dark Pro pair. With
+   `defaultColor: false` each token carries both colours as CSS variables; swap
+   the text colours with the site theme and keep the background transparent so
+   the surrounding card surface shows through. */
+.shiki {
+	background-color: transparent !important;
+}
+
+.shiki,
+.shiki span {
+	color: var(--shiki-light);
+}
+
+.dark .shiki,
+.dark .shiki span {
+	color: var(--shiki-dark);
+}
+
+/* Sonner toast surface. The cn-toast class is set in components/sonner.tsx;
+   sonner ships its own slide+fade enter/exit and stacking, so here we only
+   layer on the product's surface tokens, spacing, lift, and per-variant icon
+   colors (the icons themselves are wired in components/sonner.tsx). */
+.cn-toast {
+	gap: 0.75rem;
+	padding: 0.75rem;
+	border-radius: var(--radius);
+	box-shadow: 0 6px 16px -4px var(--shadow);
+	font-family: var(--font-sans);
+}
+
+.cn-toast [data-icon] {
+	align-self: flex-start;
+	margin-top: 1px;
+}
+
+.cn-toast [data-title] {
+	font-weight: 500;
+	color: var(--foreground);
+	text-wrap: pretty;
+}
+
+.cn-toast [data-description] {
+	line-height: 1.25rem;
+	color: var(--muted-foreground);
+	text-wrap: pretty;
+}
+
+.cn-toast[data-type="success"] [data-icon] {
+	color: var(--success);
+}
+
+.cn-toast[data-type="error"] [data-icon] {
+	color: var(--destructive);
+}
+
+.cn-toast[data-type="warning"] [data-icon] {
+	color: var(--warning);
+}
+
+.cn-toast[data-type="info"] [data-icon] {
+	color: var(--foreground);
+}
