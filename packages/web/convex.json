@@ -1,0 +1,10 @@
+{
+	"$schema": "node_modules/convex/schemas/convex.schema.json",
+	"functions": "convex/",
+	"node": {
+		"externalPackages": ["ssh2", "cpu-features"]
+	},
+	"aiFiles": {
+		"enabled": false
+	}
+}

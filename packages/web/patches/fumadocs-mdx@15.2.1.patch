@@ -1,0 +1,15 @@
+diff --git a/dist/core-BPlsDtvN.js b/dist/core-BPlsDtvN.js
+index 2c8d991..8e52570 100644
+--- a/dist/core-BPlsDtvN.js
++++ b/dist/core-BPlsDtvN.js
+@@ -236,7 +236,9 @@ function createCore(options) {
+ 				await Promise.all(out.entries.map(async (entry) => {
+ 					const file = path.join(outDir, entry.path);
+ 					await fs.mkdir(path.dirname(file), { recursive: true });
+-					await fs.writeFile(file, entry.content);
++					const tmp = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
++					await fs.writeFile(tmp, entry.content);
++					await fs.rename(tmp, file);
+ 				}));
+ 				console.log(options.workspace ? `[MDX: ${options.workspace.name}] generated files in ${performance.now() - start}ms` : `[MDX] generated files in ${performance.now() - start}ms`);
+ 			}
