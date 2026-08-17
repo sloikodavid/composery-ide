@@ -1,0 +1,4 @@
+example.com {
+	encode gzip
+	reverse_proxy composery:8080
+}

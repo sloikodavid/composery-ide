@@ -1,0 +1,27 @@
+# Example Ingress. Adjust the host, ingress class, and TLS to your cluster.
+# This assumes an ingress controller (e.g. ingress-nginx) and cert-manager for TLS.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: composery
+  labels:
+    app: composery
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - example.com
+      secretName: composery-tls
+  rules:
+    - host: example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: composery
+                port:
+                  number: 8080

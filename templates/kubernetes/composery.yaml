@@ -1,0 +1,119 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: composery-data
+  labels:
+    app: composery
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: composery
+  labels:
+    app: composery
+spec:
+  replicas: 1
+  # persistence is a single writer for one /data volume: never run two pods against it.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: composery
+  template:
+    metadata:
+      labels:
+        app: composery
+    spec:
+      containers:
+        - name: composery
+          image: ghcr.io/sloikodavid/composery:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            # Register the first password in the browser, or supply one from a Secret:
+            # - name: COMPOSERY_PASSWORD
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: composery
+            #       key: password
+            #
+            # Opt in to the systemd init and, with it, the overlay persistence
+            # engine (the kernel maintains the rootfs delta instead of a
+            # userspace daemon, so there is no restore pass at boot - see
+            # docs/persistence.md). Uncomment this together with the
+            # securityContext and the three volumes below; all of it is needed,
+            # and the node must be cgroup v2. Without them the pod runs the copy
+            # engine, which is fully supported - this is a preference, not a fix.
+            # - name: COMPOSERY_INIT
+            #   value: systemd
+          startupProbe:
+            httpGet:
+              path: /_composery/healthz
+              port: 8080
+            failureThreshold: 30
+            periodSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /_composery/healthz
+              port: 8080
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /_composery/healthz
+              port: 8080
+            periodSeconds: 30
+          # Required by the systemd/overlay option above. Privileged is what
+          # grants CAP_SYS_ADMIN for the overlay mount, and systemd needs a
+          # writable cgroup tree.
+          # securityContext:
+          #   privileged: true
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            # - name: cgroup
+            #   mountPath: /sys/fs/cgroup
+            # - name: run
+            #   mountPath: /run
+            # - name: run-lock
+            #   mountPath: /run/lock
+            # - name: tmp
+            #   mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: composery-data
+        # - name: cgroup
+        #   hostPath:
+        #     path: /sys/fs/cgroup
+        #     type: Directory
+        # - name: run
+        #   emptyDir:
+        #     medium: Memory
+        # - name: run-lock
+        #   emptyDir:
+        #     medium: Memory
+        # - name: tmp
+        #   emptyDir:
+        #     medium: Memory
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: composery
+  labels:
+    app: composery
+spec:
+  selector:
+    app: composery
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080

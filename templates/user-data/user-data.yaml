@@ -1,0 +1,23 @@
+#cloud-config
+# Composery one-paste install for a fresh VPS (DigitalOcean, Hetzner, Vultr, Linode, ...).
+# Paste this into the provider's "user data" field when you create the server.
+#
+# Before you paste:
+#   1. Point an A/AAAA DNS record at the server's IP.
+#   2. In the sed line below, replace your-domain.example with that domain.
+#
+# Runs Composery behind Caddy (automatic HTTPS) with the systemd init - the same as
+# templates/systemd-caddy-compose. It fetches those files instead of duplicating them, so
+# there is nothing to keep in sync here.
+#
+# systemd rather than supervisor because the server is yours: the container can be
+# privileged, which is what lets persistence use its overlay engine (the kernel maintains
+# the rootfs delta, so there is no restore pass at boot). See docs/persistence.md.
+runcmd:
+  - curl -fsSL https://get.docker.com | sh
+  - install -d /opt/composery
+  - curl -fsSL https://raw.githubusercontent.com/sloikodavid/composery-ide/main/templates/systemd-caddy-compose/compose.yaml    -o /opt/composery/compose.yaml
+  - curl -fsSL https://raw.githubusercontent.com/sloikodavid/composery-ide/main/templates/systemd-caddy-compose/Caddyfile      -o /opt/composery/Caddyfile
+  - curl -fsSL https://raw.githubusercontent.com/sloikodavid/composery-ide/main/templates/systemd-caddy-compose/composery.env  -o /opt/composery/composery.env
+  - sed -i 's/example\.com/your-domain.example/' /opt/composery/Caddyfile
+  - cd /opt/composery && docker compose up -d

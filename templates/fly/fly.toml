@@ -1,0 +1,35 @@
+# Fly.io app config - https://fly.io/docs/reference/configuration/
+# Create the volume once before the first deploy:
+#   fly volumes create composery_data --size 10 --region iad
+app = "composery"
+primary_region = "iad"
+
+[build]
+  image = "ghcr.io/sloikodavid/composery:latest"
+
+[env]
+  PORT = "8080"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Keep the instance running; it is long-lived and interactive, not a burst worker.
+  auto_stop_machines = "off"
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    method = "get"
+    path = "/_composery/healthz"
+    interval = "30s"
+    timeout = "5s"
+    # Fly caps this at one minute. The startup grace on targets without that cap
+    # remains longer (Kubernetes ~150s, Railway 120s).
+    grace_period = "60s"
+
+[[mounts]]
+  source = "composery_data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"

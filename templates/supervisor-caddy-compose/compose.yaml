@@ -1,0 +1,40 @@
+x-logging: &logging
+  driver: local
+
+services:
+  caddy:
+    image: caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
+    restart: unless-stopped
+    logging: *logging
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on:
+      composery:
+        condition: service_healthy
+
+  composery:
+    image: ghcr.io/sloikodavid/composery:latest
+    restart: unless-stopped
+    init: true
+    logging: *logging
+    stop_grace_period: 1m
+    env_file: ./composery.env
+    volumes:
+      - composery_data:/data
+    expose:
+      - "8080"
+    # SSH. Caddy fronts the HTTP port, but SSH is not HTTP and does not pass
+    # through it - it needs its own mapping. Uncomment to reach this instance with
+    # ssh, scp, rsync, or a desktop editor's remote mode. 2222 on the left because
+    # your own server already uses 22; the right side is always 22 inside the
+    # container. Add a key with COMPOSERY_SSH_AUTHORIZED_KEYS, or from the editor.
+    # ports:
+    #   - "2222:22"
+
+volumes:
+  composery_data:
+  caddy_data:

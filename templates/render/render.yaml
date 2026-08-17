@@ -1,0 +1,20 @@
+# Render Blueprint - https://render.com/docs/blueprint-spec
+# A persistent disk requires a paid instance type; free web services are ephemeral.
+services:
+  - type: web
+    name: composery
+    runtime: image
+    plan: starter
+    image:
+      url: ghcr.io/sloikodavid/composery:latest
+    healthCheckPath: /_composery/healthz
+    disk:
+      name: composery-data
+      mountPath: /data
+      sizeGB: 10
+    envVars:
+      - key: PORT
+        value: 8080
+      # Register the first password in the browser, or manage it here:
+      # - key: COMPOSERY_PASSWORD
+      #   sync: false
