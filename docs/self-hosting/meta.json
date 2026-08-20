@@ -1,0 +1,13 @@
+{
+	"pages": [
+		"render",
+		"railway",
+		"digitalocean",
+		"fly",
+		"koyeb",
+		"other-platforms",
+		"vps",
+		"kubernetes",
+		"disk-space"
+	]
+}
