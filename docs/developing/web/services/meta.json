@@ -1,0 +1,11 @@
+{
+	"pages": [
+		"cloudflare",
+		"convex",
+		"clerk",
+		"polar",
+		"hetzner",
+		"resend",
+		"vercel"
+	]
+}
