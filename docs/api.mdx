@@ -1,0 +1,185 @@
+---
+title: API
+description: Create and control a running Composery's real editor terminals from anywhere.
+---
+
+Every Composery serves a small automation API on its own URL, in-process with the
+editor, on the same single port. It exposes the editor's persistent terminals to
+`curl`, CI, scripts, and WebSocket clients using API keys minted on the instance.
+There is no second execution subsystem: every process created here is a VS Code
+terminal running through the pty host.
+
+The API stays at the origin-root `/_composery/api/v1/` namespace; it is not under
+the browser workbench's `/ide/` PWA scope.
+
+This is not a control-plane API. There is no lifecycle here (no create/stop/delete
+of instances). The instance already exists; this only automates work inside it.
+
+## Enabling it
+
+The API is on by default but **auto-gated**: with no keys, every endpoint returns
+`401`, so it is effectively off until you mint one. To turn it off entirely, set
+`COMPOSERY_DISABLE_API=true` (every endpoint then returns `404`).
+
+## API keys
+
+Keys are created, listed, and revoked **on the instance** - being able to open the
+editor is the authorization. You cannot mint a key remotely without already being
+able to log in, which is the intended boundary.
+
+In the editor, open the **File** menu and choose **Manage API Keys**. It lists the
+instance's keys and creates new ones; each listed key carries a trash button that
+revokes it, after a confirmation. A new key's secret appears once, with a button to
+copy it.
+
+In a terminal, the `composery` CLI does the same:
+
+```bash
+composery api key create --name ci      # prints the secret ONCE
+composery api key list
+composery api key revoke <id>
+```
+
+The secret (`composery_...`) is shown once at creation and never again - only its
+SHA-256 hash is stored, in `<volume>/api/keys.json` (`0600`, on the persistent
+volume so keys survive a redeploy; `/data` by default). Add `--json` to any command for
+machine-readable output.
+
+Authenticate with either header:
+
+```text
+Authorization: Bearer composery_...
+X-API-Key: composery_...
+```
+
+## Create a terminal
+
+`POST /_composery/api/v1/terminals` creates the same persistent pty-backed
+terminal as the editor. It returns immediately by default:
+
+```bash
+curl -X POST https://<your-instance>/_composery/api/v1/terminals \
+  -H "Authorization: Bearer composery_..." \
+  -H "Content-Type: application/json" \
+  -d '{"command":"pnpm dev","cwd":"~/app","title":"dev"}'
+```
+
+Set `hidden: true` to keep it in the editor's background terminal collection.
+The default is `false`; the value is passed to VS Code's `hideFromUser` launch
+config rather than implemented as an API-only visibility state.
+
+For a one-shot, add `wait: true`. The request then waits for the pty to exit and
+returns `output`, `exit_code`, `timed_out`, and `truncated`:
+
+```bash
+curl -X POST https://<your-instance>/_composery/api/v1/terminals \
+  -H "Authorization: Bearer composery_..." \
+  -H "Content-Type: application/json" \
+  -d '{"command":"pnpm build","cwd":"~/app","wait":true,"timeout":600}'
+```
+
+A pty has one output stream, so `output` is the raw merged stream. ANSI and
+shell-integration sequences are retained. The timeout and output cap apply only
+while waiting synchronously.
+
+Disconnecting from a wait stops the terminal, because nothing is left that could
+collect the result. Send an `Idempotency-Key` and it keeps running instead: the
+key is what lets a retry pick the result back up, so there is something to come
+back to.
+
+<APIOperation path="/_composery/api/v1/terminals" method="post" />
+
+## Inspect and control terminals
+
+The inventory is every persistent terminal, including the ones you opened in the
+editor yourself - there is no separate class of API terminal to look for.
+
+<APIOperation path="/_composery/api/v1/terminals" method="get" />
+
+<APIOperation path="/_composery/api/v1/terminals/{id}" method="get" />
+
+Scrollback is the pty host's own replay: the size events and the raw output it
+would send an editor reattaching to that terminal, control sequences included. A
+terminal that has never written anything replays as empty rather than as `404`.
+
+<APIOperation path="/_composery/api/v1/terminals/{id}/buffer" method="get" />
+
+Renaming uses VS Code's API title source, the one that survives the process
+renaming itself. `cols` and `rows` move together, and nothing is applied unless
+the whole request is valid.
+
+<APIOperation path="/_composery/api/v1/terminals/{id}" method="patch" />
+
+<APIOperation path="/_composery/api/v1/terminals/{id}/input" method="post" />
+
+<APIOperation path="/_composery/api/v1/terminals/{id}/signal" method="post" />
+
+<APIOperation path="/_composery/api/v1/terminals/{id}/clear" method="post" />
+
+<APIOperation path="/_composery/api/v1/terminals/{id}" method="delete" />
+
+## Attach over WebSocket
+
+`WS /_composery/api/v1/terminals/{id}` attaches to an existing terminal.
+Binary frames from the server are raw terminal output. Binary frames from the
+client are terminal input, while client text frames are control messages. The
+attach first replays existing scrollback and then follows the live tail. On
+exit, the server sends `{"exit":{"code":N}}` and closes.
+
+```bash
+websocat --protocol composery-terminal-v1 \
+  -H "Authorization: Bearer composery_..." \
+  "wss://<your-instance>/_composery/api/v1/terminals/7"
+```
+
+Disconnecting only detaches this stream. The terminal stays in the editor,
+running: a command started here keeps going with nobody attached, and you can
+pick it up in the editor or attach again later. Closing it in the editor stops
+it, the way it stops any terminal, and so does `DELETE`.
+
+Terminal emulators must negotiate the `composery-terminal-v1` WebSocket
+subprotocol; the server rejects attachments without it. Clients may include
+their initial grid as `?cols=80&rows=24`. Binary client frames are terminal
+input and text client frames are control messages:
+
+```json
+{ "type": "resize", "cols": 80, "rows": 24 }
+```
+
+Each resize also makes that WebSocket the terminal's active viewport. When it
+disconnects, the server restores the most recently active attached viewport.
+
+The pty host arbitrates its single flow-control counter across the browser and
+API attachments, so the same broadcast output is never acknowledged twice, and a
+terminal nothing is attached to runs at full speed rather than stalling on output
+no one is there to acknowledge.
+
+## Configuration
+
+Timeouts, output caps, and rate limits are overridable through `COMPOSERY_API_*`
+environment variables, listed with their defaults in
+[Configuration - API](configuration.md#api).
+
+## Webhooks
+
+Webhook senders should call an application route such as `/hooks/linear`, not the
+terminal API directly. The receiver verifies the provider signature against the
+unchanged request body, deduplicates the delivery, queues the work, and returns the
+provider's success response quickly. Its worker can then run `claude -p ...`,
+`codex exec ...`, or any other normal command locally. No Composery query parameters
+are involved.
+
+For example, run a receiver on `127.0.0.1:3000`, add the following to
+`/etc/caddy/Caddyfile`, and give the provider
+`https://<your-instance>/hooks/linear`:
+
+```text
+handle /hooks/linear* {
+	reverse_proxy 127.0.0.1:3000
+}
+```
+
+The API remains useful when the caller is a system that can set an authorization header.
+A provider webhook generally cannot, and embedding an API key in a URL would leak it into
+logs and configuration. The local receiver also has the provider-specific raw-body and
+retry semantics that a generic command endpoint cannot safely guess.

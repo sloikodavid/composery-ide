@@ -1,0 +1,11 @@
+{
+	"pages": [
+		"index",
+		"self-hosting",
+		"configuration",
+		"persistence",
+		"ssh",
+		"ai-agents",
+		"api"
+	]
+}

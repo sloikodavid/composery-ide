@@ -1,0 +1,411 @@
+# The instance automation API, rendered into docs/api.mdx by fumadocs-openapi.
+# tests/invariants/api-openapi.test.ts pins this file to the route that serves it.
+openapi: 3.1.0
+
+info:
+  title: Composery instance API
+  version: v1
+  description: |
+    Creates and controls the same persistent terminals used by the editor.
+    Every instance serves this API at the origin-root /_composery/api/v1/
+    namespace, outside the browser workbench's /ide/ PWA scope, and authenticates
+    it with keys minted on that instance.
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
+servers:
+  - url: https://{instance}
+    variables:
+      instance:
+        default: your-instance.example.com
+
+security:
+  - bearerAuth: []
+  - apiKeyHeader: []
+
+paths:
+  /_composery/api/v1/terminals:
+    get:
+      summary: List terminals
+      operationId: listTerminals
+      description: Lists every persistent terminal, including terminals opened in the editor.
+      responses:
+        "200":
+          description: Persistent terminals.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Terminal"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/ApiDisabled" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/ServerError" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+    post:
+      summary: Create a terminal
+      operationId: createTerminal
+      description: |
+        Creates a persistent VS Code terminal through the pty host. By default
+        it returns the terminal immediately. With `wait: true`, it waits for
+        exit and returns the raw merged pty output, subject to the configured
+        timeout and output cap.
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: |
+            Makes a retry return the first response instead of creating another
+            terminal. An in-flight retry waits for the first request. Results
+            are retained for 5 minutes; a different body with the same key is
+            rejected with `409`.
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TerminalCreate"
+      responses:
+        "200":
+          description: A waited terminal exited.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WaitResult"
+        "201":
+          description: A persistent terminal was created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Terminal"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/ApiDisabled" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/ServerError" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /_composery/api/v1/terminals/{id}:
+    parameters:
+      - $ref: "#/components/parameters/TerminalId"
+    get:
+      summary: Get a terminal
+      operationId: getTerminal
+      responses:
+        "200":
+          description: Terminal details.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Terminal"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/ServerError" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+    patch:
+      summary: Update a terminal
+      operationId: updateTerminal
+      description: Renames, recolours, changes the icon, or resizes the pty.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TerminalPatch"
+      responses:
+        "200":
+          description: Updated terminal details.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Terminal"
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/ServerError" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+    delete:
+      summary: Shut down a terminal
+      operationId: deleteTerminal
+      description: Shuts down the pty the same way closing its terminal tab does.
+      responses:
+        "204":
+          description: Terminal shut down.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/ServerError" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /_composery/api/v1/terminals/{id}/buffer:
+    parameters:
+      - $ref: "#/components/parameters/TerminalId"
+    get:
+      summary: Get terminal scrollback
+      operationId: getTerminalBuffer
+      description: Returns the pty host replay produced by `serializeTerminalState`.
+      responses:
+        "200":
+          description: Terminal replay events, including raw control sequences.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TerminalBuffer"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/ServerError" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /_composery/api/v1/terminals/{id}/input:
+    parameters:
+      - $ref: "#/components/parameters/TerminalId"
+    post:
+      summary: Write terminal input
+      operationId: inputTerminal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TerminalInput"
+      responses:
+        "204": { description: Input written. }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/ServerError" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /_composery/api/v1/terminals/{id}/signal:
+    parameters:
+      - $ref: "#/components/parameters/TerminalId"
+    post:
+      summary: Signal a terminal
+      operationId: signalTerminal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TerminalSignal"
+      responses:
+        "204": { description: Signal sent. }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/ServerError" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+  /_composery/api/v1/terminals/{id}/clear:
+    parameters:
+      - $ref: "#/components/parameters/TerminalId"
+    post:
+      summary: Clear a terminal
+      operationId: clearTerminal
+      responses:
+        "204": { description: Terminal buffer cleared. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/ServerError" }
+        "503": { $ref: "#/components/responses/Unavailable" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+    apiKeyHeader:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  parameters:
+    TerminalId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+
+  schemas:
+    TerminalCreate:
+      type: object
+      properties:
+        command:
+          type: string
+          description: Command run by the login shell. Omit to start an interactive login shell.
+        cwd:
+          type: string
+          description: Working directory. `~` and `~/...` expand; defaults to `$HOME`.
+        env:
+          type: object
+          additionalProperties:
+            type: string
+        cols:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          default: 80
+        rows:
+          type: integer
+          minimum: 1
+          maximum: 1000
+          default: 24
+        title:
+          type: string
+        hidden:
+          type: boolean
+          default: false
+          description: Wires directly to the pty shell launch config's `hideFromUser`.
+        wait:
+          type: boolean
+          default: false
+          description: |
+            Wait for the terminal to exit and return its output instead of
+            returning the terminal. Disconnecting from a wait stops the terminal,
+            since nothing is left to collect the result - unless the request
+            carried an `Idempotency-Key`, which is what lets a retry collect it.
+        timeout:
+          type: number
+          exclusiveMinimum: 0
+          description: Seconds before a waited terminal is stopped.
+
+    Terminal:
+      type: object
+      required: [id, title, cwd, pid, workspaceId, running]
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        cwd: { type: string }
+        pid:
+          type: integer
+          description: "`-1` until the shell has started."
+        workspaceId:
+          type: string
+          description: |
+            The window a terminal belongs to. Terminals created here carry a
+            sentinel instead, because the API has no editor window: they belong
+            to whichever window asks for its layout.
+        running:
+          type: boolean
+          description: |
+            Whether the shell has started. Do not poll this for completion - a
+            terminal that exits leaves the inventory altogether rather than
+            reporting `false`, so it turns into a `404`.
+
+    WaitResult:
+      type: object
+      required: [output, exit_code, timed_out, truncated]
+      properties:
+        output:
+          type: string
+          description: Raw merged pty output, including ANSI and shell-integration sequences.
+        exit_code: { type: integer }
+        timed_out: { type: boolean }
+        truncated: { type: boolean }
+
+    TerminalPatch:
+      type: object
+      properties:
+        title: { type: string }
+        icon:
+          type: string
+          description: VS Code theme icon id.
+        color:
+          type: string
+          description: VS Code theme color id.
+        cols:
+          type: integer
+          minimum: 1
+          maximum: 1000
+        rows:
+          type: integer
+          minimum: 1
+          maximum: 1000
+
+    TerminalBuffer:
+      type: object
+      required: [events, commands]
+      properties:
+        events:
+          type: array
+          items:
+            type: object
+            required: [cols, rows, data]
+            properties:
+              cols: { type: integer }
+              rows: { type: integer }
+              data: { type: string }
+        commands: {}
+
+    TerminalInput:
+      type: object
+      required: [data]
+      properties:
+        data: { type: string }
+
+    TerminalSignal:
+      type: object
+      required: [signal]
+      properties:
+        signal: { type: string }
+
+    Error:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+
+  responses:
+    BadRequest:
+      description: Invalid request body.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: Invalid or missing API key.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ApiDisabled:
+      description: The API is disabled.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Terminal not found, or the API is disabled.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: The Idempotency-Key was reused with a different request.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    RateLimited:
+      description: Request, authentication, or terminal-stream limit exceeded.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ServerError:
+      description: Terminal operation failed.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unavailable:
+      description: The key store or editor server is unavailable.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
