@@ -1,0 +1,43 @@
+{
+	"$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+	"_comment": "Mutation testing config. Driven by scripts/mutants.mjs, which derives each run's scope from the `mutate` set below; a full sweep is the nightly job in .github/workflows/mutants.yaml. Doctrine: docs/developing/testing.md. No `coverageAnalysis`: the vitest runner forces `perTest` whatever this file says, so a value here would read as a decision nobody can act on - reaching for `\"all\"` to explain a survivor changes nothing.",
+	"_comment_workflows": "The box workflow bodies are excluded because no test runs them; the argument for that, and the only statement of it, is beside the same path in vitest.config.ts's coverage exclusions. This is the last rung of the duplication ladder - Stryker reads JSON and cannot import that list - so tests/invariants/tests.test.ts pins the two entries together. The exclusion is honest only while those files stay wiring: a workflow body is `step.run*` calls in order, and every decision it makes belongs in a module it calls (snapshotPollOutcome, snapshotImagePollStatus, rollbackCaptureFailure, runtimeArtifactsForBox). Logic moved into one of these files is logic nothing can check.",
+	"plugins": ["@stryker-mutator/vitest-runner"],
+	"packageManager": "pnpm",
+	"testRunner": "vitest",
+	"vitest": {
+		"configFile": "vitest.mutation.config.ts"
+	},
+	"reporters": ["progress", "clear-text", "html"],
+	"htmlReporter": {
+		"fileName": "tmp/mutants/stryker.html"
+	},
+	"tempDirName": "tmp/stryker",
+	"mutate": [
+		"packages/shared/**/*.{ts,mjs}",
+		"packages/web/{convex,lib,hooks}/**/*.{ts,tsx}",
+		"packages/ide/overlay/**/*.ts",
+		"scripts/**/*.mjs",
+		"!**/_generated/**",
+		"!**/*.test.*",
+		"!**/tests/**",
+		"!packages/web/convex/boxes/workflows/**"
+	],
+	"ignorePatterns": [
+		".agents",
+		".claude",
+		".github",
+		"packages/ide/upstream",
+		"packages/ide/build",
+		"packages/web/.next",
+		"packages/web/.source",
+		"packages/cli/target",
+		"coverage",
+		"tmp"
+	],
+	"thresholds": {
+		"high": 80,
+		"low": 60,
+		"break": 0
+	}
+}
