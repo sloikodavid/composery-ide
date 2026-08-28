@@ -1,0 +1,65 @@
+// Dead-code and unused-dependency gate. Agents leave orphans faster than anyone
+// notices them, so this is the rot control the test suite cannot provide.
+//
+// JSONC rather than JSON: knip 6 rejects unknown keys, so there is nowhere in a
+// plain .json file to say why an entry exists - and an ignore list without
+// reasons is one nobody can ever safely shrink.
+//
+// Nothing here restates a default. knip reports an entry that changes no result
+// as a configuration hint, and an exclusion carried past the problem it solved
+// is the kind that outlives every reason anyone could give for it - so a name
+// below is a claim that knip gets this one wrong, and `pnpm check:knip` prints a
+// hint the moment that stops being true.
+//
+// packages/web's `project` names .css and .mdx so knip follows what they import.
+// tailwindcss and tw-animate-css are reached only from `@import` lines in
+// app/globals.css, and listing those extensions resolves them for real - which
+// beats two ignore entries asserting the same thing where nothing can check it.
+//
+// ignoreDependencies is what is left: packages read as files rather than
+// imported. The colour console serves
+// `node_modules/@vscode/codicons/dist/codicon.css` and
+// `node_modules/lucide-static/sprite.svg` over HTTP, and its invariants test
+// reads the same codicon CSS to prove every glyph the IDE preview draws is a
+// real one. A path in a string is exactly what a static scan cannot follow.
+{
+	"$schema": "https://unpkg.com/knip@6/schema.json",
+	// `knip` exits 0 when hints are all it found, so an entry that stopped
+	// changing a result could sit here through every green run that reported it.
+	// This makes the hint the failure it already describes.
+	"treatConfigHintsAsErrors": true,
+	"workspaces": {
+		".": {
+			"entry": [
+				"scripts/*.mjs",
+				"tests/**/*.test.ts",
+				// Reached by name from `stryker.config.json` rather than by an import,
+				// which is the same blind spot the ignoreDependencies note describes: a
+				// path in a string is what a static scan cannot follow. The plain
+				// `vitest.config.ts` beside it needs no entry - knip already knows it.
+				"vitest.mutation.config.ts"
+			],
+			"project": ["scripts/**/*.mjs", "tests/**/*.ts", "*.ts", "*.mjs"]
+		},
+		"packages/shared": {
+			"entry": ["scripts/**/*.mjs"],
+			"project": ["**/*.{ts,mjs}"]
+		},
+		"packages/web": {
+			// convex/ is an entry surface, not a library: the deployment calls these
+			// exports, so no import inside the checkout reaches most of them.
+			"entry": ["convex/**/*.ts", "tests/**/*.test.ts", "scripts/**/*.mjs"],
+			"project": ["**/*.{ts,tsx,css,mdx}", "scripts/**/*.mjs"]
+		},
+		"packages/ide": {
+			"entry": ["tests/**/*.test.ts", "scripts/*.mjs"],
+			"project": ["tests/**/*.ts", "scripts/*.mjs"]
+		}
+	},
+	"ignore": [
+		"packages/ide/overlay/**",
+		"packages/ide/upstream/**",
+		"packages/web/components/base/**"
+	],
+	"ignoreDependencies": ["@vscode/codicons", "lucide-static"]
+}
