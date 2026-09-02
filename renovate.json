@@ -1,0 +1,166 @@
+{
+	"$schema": "https://docs.renovatebot.com/renovate-schema.json",
+	"extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+	"dependencyDashboard": true,
+	"semanticCommits": "enabled",
+	"labels": ["dependencies"],
+	"minimumReleaseAge": "3 days",
+	"prConcurrentLimit": 3,
+	"prHourlyLimit": 1,
+	"vulnerabilityAlerts": {
+		"enabled": true
+	},
+	"docker-compose": {
+		"enabled": true
+	},
+	"git-submodules": {
+		"enabled": true
+	},
+	"kubernetes": {
+		"description": "The Kubernetes manager ships with no file patterns, so it sees nothing until it is told where to look. Point it at the deployment template; without this the manifest is the one recipe Renovate cannot read.",
+		"managerFilePatterns": ["/^templates/kubernetes/.+\\.yaml$/"]
+	},
+	"packageRules": [
+		{
+			"description": "Major updates: never automerge, hold for manual approval on the dashboard.",
+			"matchUpdateTypes": ["major"],
+			"automerge": false,
+			"dependencyDashboardApproval": true
+		},
+		{
+			"description": "Pin Dockerfile base image digests.",
+			"matchManagers": ["dockerfile"],
+			"pinDigests": true
+		},
+		{
+			"description": "Move the internal binary and every outer Caddy edge together.",
+			"matchPackageNames": ["caddy", "library/caddy"],
+			"groupName": "caddy",
+			"pinDigests": true
+		},
+		{
+			"description": "Group Node runtime pins so .nvmrc, package engines, the Docker base image and the type definitions move together.",
+			"matchPackageNames": ["node", "library/node", "@types/node"],
+			"groupName": "node runtime"
+		},
+		{
+			"description": "@types/node describes the runtime, so its major is the Node major, not a version to chase: a newer major types APIs the shipped Node does not have and the compiler stops saying anything true. Node's own major is pinned by the IDE's native-module ABI, so raise this ceiling only when that moves; a test pins the pair.",
+			"matchPackageNames": ["@types/node"],
+			"allowedVersions": "<25"
+		},
+		{
+			"description": "Group Rust toolchain pins so the CI toolchain and the Docker build image move together; Cargo's rust-version is pinned to them by a test.",
+			"matchPackageNames": ["rust", "library/rust", "dtolnay/rust-toolchain"],
+			"groupName": "rust toolchain"
+		},
+		{
+			"description": "The coverage provider is released in lockstep with the runner and refuses to load against a different minor, so move them together; a test pins the pair.",
+			"matchPackageNames": ["vitest", "@vitest/coverage-v8"],
+			"groupName": "vitest"
+		},
+		{
+			"description": "Automerge low-risk updates once CI + smoke pass.",
+			"matchUpdateTypes": ["patch", "pin", "digest"],
+			"automerge": true
+		},
+		{
+			"description": "Automerge dev dependency minor + patch once CI passes.",
+			"matchDepTypes": ["devDependencies"],
+			"matchUpdateTypes": ["minor", "patch"],
+			"automerge": true
+		},
+		{
+			"description": "Group + automerge GitHub Actions bumps (digest/minor/patch).",
+			"matchManagers": ["github-actions"],
+			"matchUpdateTypes": ["digest", "pin", "patch", "minor"],
+			"groupName": "github-actions",
+			"automerge": true
+		},
+		{
+			"description": "Group + automerge the Dockerfile build tools.",
+			"matchPackageNames": ["bun", "npm", "pnpm", "cargo-chef"],
+			"matchUpdateTypes": ["minor", "patch"],
+			"groupName": "build tools",
+			"automerge": true
+		},
+		{
+			"description": "Never bump our own published image.",
+			"matchPackageNames": ["ghcr.io/sloikodavid/composery"],
+			"enabled": false
+		},
+		{
+			"description": "Patched in pnpm-workspace.yaml, where the patch filename embeds the exact version: a bump that does not also regenerate the patch fails to install. Hold for manual regeneration.",
+			"matchPackageNames": ["fumadocs-mdx", "fumadocs-ui"],
+			"automerge": false,
+			"dependencyDashboardApproval": true
+		},
+		{
+			"description": "Clerk is version-locked by the overrides in pnpm-workspace.yaml (@clerk/ui imports an internal hook @clerk/shared dropped after 4.14.0). Move the whole set by hand or not at all.",
+			"matchPackageNames": ["@clerk/**"],
+			"groupName": "clerk",
+			"automerge": false,
+			"dependencyDashboardApproval": true
+		},
+		{
+			"description": "typescript-eslint peers `typescript >=4.8.4 <6.1.0`, so TS 6.1+ and the Go-native TS 7 both break typed linting. TS 7 dropped the programmatic API typescript-eslint reads types through; a replacement lands in 7.1, and typescript-eslint closed its TS 7 issue as not planned until then. Lift this when typescript-eslint's peer range names a version we want.",
+			"matchPackageNames": ["typescript"],
+			"allowedVersions": "<6.1.0"
+		},
+		{
+			"description": "ESLint 10 removed the context.getFilename/getSourceCode APIs that eslint-plugin-react, eslint-plugin-jsx-a11y and eslint-plugin-import still call through eslint-config-next. On v10 the package aborts with a TypeError before linting a single file, so this is a hard block, not a warning. Lift when those plugins ship v10 support (jsx-eslint/eslint-plugin-react#3977, vercel/next.js#89764).",
+			"matchPackageNames": ["eslint", "@eslint/js"],
+			"allowedVersions": "<10"
+		},
+		{
+			"description": "Hold code-server submodule bumps for manual patch-rebase; a new release can break the quilt stack.",
+			"matchManagers": ["git-submodules"],
+			"automerge": false,
+			"dependencyDashboardApproval": true
+		}
+	],
+	"customManagers": [
+		{
+			"customType": "regex",
+			"managerFilePatterns": ["/^Dockerfile$/"],
+			"matchStrings": [
+				"#\\s*renovate:\\s*datasource=(?<datasource>npm|crate)\\s+depName=(?<depName>\\S+)\\s*\\n\\s*ARG\\s+\\S+=(?<currentValue>\\S+)"
+			]
+		},
+		{
+			"customType": "regex",
+			"managerFilePatterns": [
+				"/^packages/web/convex/boxes/infra/artifacts\\.ts$/"
+			],
+			"matchStrings": [
+				"//\\s*renovate:\\s*datasource=(?<datasource>docker)\\s+depName=(?<depName>\\S+)\\s*\\n\\s*export const CADDY_IMAGE =\\s*\\n\\s*\"caddy:(?<currentValue>[^@\"]+)@(?<currentDigest>sha256:[a-f0-9]{64})\""
+			]
+		},
+		{
+			"customType": "regex",
+			"managerFilePatterns": ["/^\\.github/workflows/templates\\.yaml$/"],
+			"matchStrings": ["version:\\s*(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
+			"datasourceTemplate": "github-releases",
+			"depNameTemplate": "superfly/flyctl",
+			"extractVersionTemplate": "^v(?<version>.+)$"
+		},
+		{
+			"customType": "regex",
+			"managerFilePatterns": ["/^tests/system/templates/run\\.mjs$/"],
+			"matchStrings": [
+				"// renovate: datasource=github-releases depName=kubernetes/kubernetes\\s*\\n\\s*kubernetes:\\s*\\n?\\s*\"https://raw\\.githubusercontent\\.com/kubernetes/kubernetes/v(?<currentValue>\\d+\\.\\d+\\.\\d+)/"
+			],
+			"datasourceTemplate": "github-releases",
+			"depNameTemplate": "kubernetes/kubernetes",
+			"extractVersionTemplate": "^v(?<version>.+)$"
+		},
+		{
+			"customType": "regex",
+			"managerFilePatterns": ["/^tests/system/templates/run\\.mjs$/"],
+			"matchStrings": [
+				"// renovate: datasource=github-releases depName=canonical/cloud-init\\s*\\n\\s*cloudConfig:\\s*\\n?\\s*\"https://raw\\.githubusercontent\\.com/canonical/cloud-init/(?<currentValue>[^/\"]+)/"
+			],
+			"datasourceTemplate": "github-releases",
+			"depNameTemplate": "canonical/cloud-init"
+		}
+	]
+}
