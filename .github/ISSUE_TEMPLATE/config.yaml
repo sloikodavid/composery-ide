@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Feature request
+    url: https://github.com/sloikodavid/composery-ide/discussions/categories/ideas
+    about: Propose an idea in Discussions and upvote the ones you want built.
+  - name: Question
+    url: https://github.com/sloikodavid/composery-ide/discussions/categories/q-a
+    about: Setup help and anything that is not a bug.
+  - name: Security vulnerability
+    url: https://github.com/sloikodavid/composery-ide/security/advisories/new
+    about: Report privately. Never open a public issue for a vulnerability.
+  - name: Composery Cloud account or billing
+    url: https://www.composery.io
+    about: Email support@composery.io - account details do not belong on the public tracker.

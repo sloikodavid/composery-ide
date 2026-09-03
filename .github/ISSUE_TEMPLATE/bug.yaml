@@ -1,0 +1,43 @@
+name: Bug report
+description: Something is broken in the runtime image, Cloud, IDE, CLI, or website.
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      description: The part of Composery where the bug shows up.
+      options:
+        - Runtime image (self-hosted)
+        - Composery Cloud
+        - IDE
+        - CLI / persistence
+        - Website or docs
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Image tag or release, if you know it.
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what you got instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1.
+        2.
+        3.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant output, with any secrets removed.
+      render: text
