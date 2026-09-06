@@ -1,0 +1,332 @@
+---
+name: senior-buzzwords
+description: Apply a broad inventory of senior-engineering concerns as a systematic software audit checklist. Use for comprehensive reviews covering edge cases, concurrency, performance, data integrity, security, testing, architecture, compatibility, observability, operations, portability, user experience, and resource efficiency.
+---
+
+# Senior engineering audit checklist
+
+Use the following concerns to guide exploration. Select what is relevant to the system under review, investigate concrete failure modes, and ground findings in evidence; do not merely repeat the terms as generic advice.
+
+- Edge Cases
+- Memory Leaks
+- Monolithic Architecture
+- Race Conditions
+- Deadlocks
+- Livelocks
+- Starvation
+- Thread Safety
+- Concurrency
+- Parallelism
+- Synchronization
+- Atomicity
+- Idempotency
+- Reentrancy
+- Mutability
+- Immutability
+- Side Effects
+- Pure Functions
+- Determinism
+- Non-Determinism
+- Eventual Consistency
+- Strong Consistency
+- CAP Theorem
+- ACID Transactions
+- BASE Consistency
+- Distributed Systems
+- Horizontal Scaling
+- Vertical Scaling
+- Load Balancing
+- Failover
+- High Availability
+- Fault Tolerance
+- Disaster Recovery
+- Graceful Degradation
+- Backpressure
+- Circuit Breakers
+- Retry Logic
+- Exponential Backoff
+- Timeouts
+- Cancellation
+- Request Deduplication
+- Caching
+- Cache Invalidation
+- Cache Stampede
+- Cache Poisoning
+- Cold Starts
+- Hot Paths
+- Bottlenecks
+- Performance
+- Throughput
+- Latency
+- Tail Latency
+- Jitter
+- Resource Contention
+- CPU Bound
+- IO Bound
+- Memory Bound
+- Network Bound
+- Heap Fragmentation
+- Garbage Collection
+- Object Pooling
+- Memory Allocation
+- Memory Pressure
+- Stack Overflow
+- Buffer Overflow
+- Integer Overflow
+- Floating Point Precision
+- Numeric Stability
+- Precision Loss
+- Data Corruption
+- Data Integrity
+- Data Validation
+- Input Sanitization
+- Output Encoding
+- Serialization
+- Deserialization
+- Schema Validation
+- Type Safety
+- Type Inference
+- Type Narrowing
+- Null Safety
+- Undefined Behavior
+- Defensive Programming
+- Design by Contract
+- Preconditions
+- Postconditions
+- Invariants
+- Assertions
+- Error Handling
+- Exception Safety
+- Panic Recovery
+- Logging
+- Structured Logging
+- Audit Logging
+- Observability
+- Instrumentation
+- Metrics
+- Tracing
+- Distributed Tracing
+- Monitoring
+- Alerting
+- Telemetry
+- Profiling
+- Benchmarking
+- Stress Testing
+- Load Testing
+- Soak Testing
+- Chaos Engineering
+- Fuzz Testing
+- Property-Based Testing
+- Unit Testing
+- Integration Testing
+- End-to-End Testing
+- Snapshot Testing
+- Regression Testing
+- Mutation Testing
+- Smoke Testing
+- Contract Testing
+- Test Isolation
+- Test Flakiness
+- Test Coverage
+- Mocking
+- Stubbing
+- Dependency Injection
+- Inversion of Control
+- Tight Coupling
+- Loose Coupling
+- Cohesion
+- Separation of Concerns
+- Single Responsibility
+- Open/Closed Principle
+- Liskov Substitution
+- Interface Segregation
+- Dependency Inversion
+- SOLID Principles
+- DRY
+- KISS
+- YAGNI
+- Composition over Inheritance
+- Encapsulation
+- Abstraction
+- Polymorphism
+- Inheritance
+- Modularization
+- Domain-Driven Design
+- Hexagonal Architecture
+- Onion Architecture
+- Clean Architecture
+- Layered Architecture
+- Event-Driven Architecture
+- CQRS
+- Event Sourcing
+- Microservices
+- Service Mesh
+- Monorepo
+- Polyrepo
+- Code Smells
+- Technical Debt
+- Code Duplication
+- Dead Code
+- Magic Numbers
+- Hardcoded Values
+- Configuration Drift
+- Feature Flags
+- Feature Toggles
+- Backward Compatibility
+- Forward Compatibility
+- Semantic Versioning
+- Breaking Changes
+- API Stability
+- API Versioning
+- Deprecation
+- Migration Paths
+- Refactoring
+- Code Simplification
+- Maintainability
+- Readability
+- Extensibility
+- Reusability
+- Scalability
+- Reliability
+- Robustness
+- Resilience
+- Portability
+- Interoperability
+- Compatibility
+- Accessibility
+- Internationalization (i18n)
+- Localization (l10n)
+- Unicode Support
+- Time Zones
+- Daylight Saving Time
+- Date Handling
+- Clock Drift
+- Clock Skew
+- Ordering Guarantees
+- Message Ordering
+- Duplicate Messages
+- Lost Updates
+- Dirty Reads
+- Phantom Reads
+- Write Skew
+- Optimistic Locking
+- Pessimistic Locking
+- Optimistic Concurrency
+- Version Conflicts
+- Merge Conflicts
+- Conflict Resolution
+- Consensus
+- Leader Election
+- Split Brain
+- Quorum
+- Replication
+- Sharding
+- Partitioning
+- Hotspots
+- Fan-out
+- Fan-in
+- N+1 Queries
+- Query Optimization
+- Indexing
+- Connection Pooling
+- Resource Leaks
+- File Descriptor Leaks
+- Socket Leaks
+- Zombie Processes
+- Orphan Processes
+- Cleanup
+- Lifecycle Management
+- State Management
+- State Synchronization
+- State Explosion
+- Shared Mutable State
+- Immutable Data Structures
+- Referential Transparency
+- Lazy Evaluation
+- Eager Evaluation
+- Memoization
+- Batching
+- Debouncing
+- Throttling
+- Rate Limiting
+- Pagination
+- Streaming
+- Chunking
+- Compression
+- Encryption
+- Authentication
+- Authorization
+- Least Privilege
+- Principle of Least Astonishment
+- Input Validation
+- Output Validation
+- Secret Management
+- Credential Rotation
+- Security Hardening
+- Attack Surface
+- SQL Injection
+- XSS
+- CSRF
+- SSRF
+- Command Injection
+- Path Traversal
+- Timing Attacks
+- Side-Channel Attacks
+- Denial of Service
+- Supply Chain Security
+- Dependency Management
+- Vulnerability Scanning
+- Static Analysis
+- Dynamic Analysis
+- Linting
+- Formatting
+- Documentation
+- API Documentation
+- Code Comments
+- Self-Documenting Code
+- Naming Consistency
+- Naming Conventions
+- Folder Structure
+- Project Organization
+- Build Reproducibility
+- Deterministic Builds
+- CI/CD
+- Release Management
+- Rollbacks
+- Blue-Green Deployments
+- Canary Releases
+- Zero-Downtime Deployments
+- Infrastructure as Code
+- Configuration Management
+- Environment Parity
+- Reproducibility
+- Cross-Platform Compatibility
+- Browser Compatibility
+- Mobile Compatibility
+- Progressive Enhancement
+- Graceful Failure
+- Fail Fast
+- Error Boundaries
+- Recovery Mechanisms
+- Self-Healing Systems
+- Operational Simplicity
+- Developer Experience (DX)
+- User Experience (UX)
+- API Ergonomics
+- Consistency
+- Predictability
+- Simplicity
+- Complexity
+- Accidental Complexity
+- Essential Complexity
+- Hidden Dependencies
+- Circular Dependencies
+- Dependency Graph
+- Build Performance
+- Startup Performance
+- Runtime Performance
+- Memory Efficiency
+- CPU Efficiency
+- Network Efficiency
+- Storage Efficiency
+- Energy Efficiency

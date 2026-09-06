@@ -1,0 +1,8 @@
+{
+	"files.watcherExclude": {
+		"**/packages/ide/upstream/**": true
+	},
+	"search.exclude": {
+		"**/packages/ide/upstream/**": true
+	}
+}

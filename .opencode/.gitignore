@@ -1,0 +1,5 @@
+goals
+# The plugin runtime opencode installs for opencode.json's "plugin" list.
+# These are per-machine install artifacts, not repository source.
+package.json
+package-lock.json
